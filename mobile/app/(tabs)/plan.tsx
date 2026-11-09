@@ -1,103 +1,72 @@
-import React, { useState } from 'react';
-import { Pressable, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { Check, Dumbbell, Footprints, Bike, Pill, GlassWater, BedDouble, Activity, HeartPulse, Sparkles, ShieldCheck, Lock } from 'lucide-react-native';
-import { api } from '@/api';
-import { useApi } from '@/useApi';
-import { C } from '@/theme';
-import type { Dashboard, Plan, Task } from '@/types';
-import { Card, FadeIn, Header, Loading, Notice, RingProgress, Row, Screen, T, useWide } from '@/ui';
-import { Platform } from 'react-native';
+import React from 'react';
+import { View } from 'react-native';
+import { router } from 'expo-router';
+import { ArrowRight, SlidersHorizontal } from 'lucide-react-native';
+import { K } from '@/kit/tokens';
+import { Kicker, Rise, Txt, useLayout, useTween } from '@/kit/core';
+import { Button, Card, ListGroup, ListRow, PageHead, Tag } from '@/kit/ui';
+import { HeatGrid } from '@/kit/charts';
+import { Cols, Page } from '@/kit/page';
+import { SessionHero } from '@/kit/training';
+import { TODAY_SESSION, doneToday, frequency, sessionById, week } from '@/data/training';
+import { useStore } from '@/data/store';
+import { useCrew } from '@/data/crew';
 
-const ICON: Record<string, any> = { treadmill: Footprints, ared: Dumbbell, cevis: Bike, vitd: Pill, water: GlassWater, sleep: BedDouble, bp: HeartPulse, checkin: Activity };
-
-function TaskRow({ t, onToggle }: { t: Task; onToggle: () => void }) {
-  const Icon = ICON[t.key] ?? (t.origin === 'perigee' ? Sparkles : Activity);
-  const adaptive = t.origin === 'perigee';
+function DayBox({ d, i }: { d: ReturnType<typeof week>[number]; i: number }) {
   return (
-    <Pressable onPress={onToggle} accessibilityRole="checkbox" accessibilityState={{ checked: t.done }}
-      style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 22, backgroundColor: adaptive ? '#141312' : '#fff', marginBottom: 10, opacity: pressed ? 0.85 : 1 }]}>
-      <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: adaptive ? 'rgba(238,108,77,0.18)' : C.soft, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon size={20} color={adaptive ? C.coral2 : C.ink} strokeWidth={1.7} />
+    <Rise i={i} from={10} style={{ flex: 1 }}>
+      <View style={{ alignItems: 'center', paddingVertical: 8, borderRadius: 14, backgroundColor: d.today ? K.copper : d.count ? K.copperTint : 'rgba(246,231,222,0.5)' }}>
+        <Txt v="caption" color={d.today ? 'rgba(255,255,255,0.8)' : K.ink2} style={{ fontSize: 10.5 }}>{d.label}</Txt>
+        <Txt v="headline" tabular color={d.today ? '#fff' : d.count ? K.ink : K.ink3} style={{ marginTop: 2 }}>{d.count}</Txt>
       </View>
-      <View style={{ flex: 1 }}>
-        <T size={15} weight="m" color={adaptive ? '#fff' : C.ink} style={t.done ? { textDecorationLine: 'line-through', opacity: 0.6 } : undefined}>{t.title}</T>
-        <T size={12} color={adaptive ? 'rgba(255,255,255,0.65)' : C.ink3}>{t.target && t.unit ? `${t.target} ${t.unit} · ` : ''}{t.detail}</T>
-        {adaptive && t.reason ? <T size={11} color={C.coral2} style={{ marginTop: 4 }}>Why: {t.reason}</T> : null}
-        {t.needsApproval ? <Row gap={4} style={{ marginTop: 4 }}><Lock size={11} color={C.amber} /><T size={11} color={C.amber}>Confirm with flight surgeon first</T></Row> : null}
-      </View>
-      <View style={{ alignItems: 'flex-end', gap: 6 }}>
-        <View style={{ width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: t.done ? C.coral : adaptive ? 'rgba(255,255,255,0.35)' : C.line, backgroundColor: t.done ? C.coral : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-          {t.done ? <Check size={15} color="#fff" strokeWidth={3} /> : null}
-        </View>
-        <T size={10} color={adaptive ? 'rgba(255,255,255,0.5)' : C.ink3}>+{t.xp} XP</T>
-      </View>
-    </Pressable>
+    </Rise>
   );
 }
 
-export default function PlanScreen() {
-  const { data, setData } = useApi<Plan>('/api/plan');
-  const { data: dash, reload } = useApi<Dashboard>('/api/dashboard');
-  const [err, setErr] = useState<string | null>(null);
-  const wide = useWide();
-  if (!data) return <Screen><Loading /></Screen>;
-  const toggle = async (k: string) => {
-    if (Platform.OS !== 'web') Haptics.selectionAsync().catch(() => {});
-    try { setData(await api<Plan>(`/api/plan/tasks/${k}/toggle`, { method: 'POST' })); reload(); } catch (e: any) { setErr(e.message); }
-  };
-  const g = dash?.game;
+export default function Training() {
+  useStore(s => s.completed);
+  const crew = useCrew();
+  const { wide } = useLayout();
+  const days = week();
+  const total = days.reduce((a, d) => a + d.count, 0);
+  const shown = useTween(total, 900);
+  const s = sessionById(TODAY_SESSION);
+  const done = doneToday(s.id);
+
+  const summary = (
+    <View>
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <Txt v="subM">This week</Txt>
+          <Txt v="subM" tabular color={K.copperInk}>{Math.round(shown)} sessions</Txt>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 5, marginTop: 12 }}>{days.map((d, i) => <DayBox key={d.key} d={d} i={i} />)}</View>
+      </Card>
+      <Card style={{ marginTop: 12 }}>
+        <Txt v="headline">Workout frequency</Txt>
+        <Txt v="caption" color={K.ink2} style={{ marginTop: 2, marginBottom: 14 }}>Past 7 weeks · logged sessions</Txt>
+        <HeatGrid weeks={frequency()} />
+      </Card>
+    </View>
+  );
+  const today = (
+    <View style={{ marginTop: wide ? 0 : 12 }}>
+      <SessionHero s={s} kicker={done ? 'Completed today' : 'Today’s session'} done={done} onPress={() => router.push(`/training/${s.id}`)} height={wide ? 260 : 190} />
+      <ListGroup style={{ marginTop: 12 }}>
+        <ListRow icon={SlidersHorizontal} title="Plan inputs" sub="Crew profile, flight duration and device data" onPress={() => router.push('/profile/mission')} />
+      </ListGroup>
+      <Card sunk style={{ marginTop: 12 }}>
+        <Kicker color={K.ink2}>Why it matters</Kicker>
+        <Txt v="caption" color={K.ink2} style={{ marginTop: 4 }}>In microgravity, bones can lose 1–1.5% of mass per month without loading. Daily aerobic and resistance work is the main countermeasure.</Txt>
+      </Card>
+    </View>
+  );
 
   return (
-    <Screen>
-      <Header title="Today’s plan" sub={`Mission plan: ${data.source}`} />
-      <Row gap={16} style={{ marginBottom: 18 }}>
-        <RingProgress value={data.progress} size={92} stroke={8}>
-          <T size={22} weight="m">{Math.round(data.progress * 100)}%</T>
-        </RingProgress>
-        <View style={{ flex: 1 }}>
-          <T size={26} weight="m">Level {g?.level ?? 1}</T>
-          <T size={13} color={C.ink2}>{g ? `${g.xp} XP · ${g.nextLevelXp} XP to next level` : ''}</T>
-          <View style={{ height: 6, borderRadius: 3, backgroundColor: C.coralTint, marginTop: 8, overflow: 'hidden' }}>
-            <View style={{ width: `${(g?.levelProgress ?? 0) * 100}%`, height: 6, backgroundColor: C.coral }} />
-          </View>
-          <T size={12} color={C.ink3} style={{ marginTop: 6 }}>🔥 {g?.streak ?? 0}-day check-in streak · {data.xpAvailable} XP left today</T>
-        </View>
-      </Row>
-      {err ? <Notice kind="red" title={err} /> : null}
-
-      <View style={wide ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : undefined}>
-        <View style={wide ? { flex: 1 } : undefined}>
-          {data.adaptations.length > 0 && (
-            <FadeIn>
-              <Row gap={8} style={{ marginBottom: 6 }}><Sparkles size={16} color={C.coral} /><T size={18} weight="m">Adapted by Astra</T></Row>
-              <T size={13} color={C.ink2} style={{ marginBottom: 12 }}>Your mission plan stays as prescribed. These additions come from your data — each one says why.</T>
-              {data.adaptations.map(t => <TaskRow key={t.key} t={t} onToggle={() => toggle(t.key)} />)}
-            </FadeIn>
-          )}
-        </View>
-        <View style={wide ? { flex: 1 } : { marginTop: 14 }}>
-          <Row gap={8} style={{ marginBottom: 12 }}><ShieldCheck size={16} color={C.ink} /><T size={18} weight="m">Mission plan</T></Row>
-          {data.items.map(t => <TaskRow key={t.key} t={t} onToggle={() => toggle(t.key)} />)}
-        </View>
-      </View>
-
-      {g && (
-        <Card style={{ marginTop: 14 }}>
-          <T size={16} weight="m" style={{ marginBottom: 10 }}>Mission patches</T>
-          <Row gap={10} wrap>
-            {g.badges.map(b => (
-              <View key={b.key} style={{ alignItems: 'center', width: 76, opacity: b.earned ? 1 : 0.4 }}>
-                <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: b.earned ? C.coral : C.soft, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: b.earned ? C.coralSoft : C.line }}>
-                  <Sparkles size={20} color={b.earned ? '#fff' : C.ink3} />
-                </View>
-                <T size={11} weight="m" center style={{ marginTop: 6 }}>{b.label}</T>
-                <T size={9} color={C.ink3} center>{b.hint}</T>
-              </View>
-            ))}
-          </Row>
-        </Card>
-      )}
-    </Screen>
+    <Page tabs title="Training" header={<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Txt v="headline">Training</Txt><Tag label={`Day ${crew.missionDay}`} /></View>}
+      footer={<Button title="Browse workout sets" icon={ArrowRight} onPress={() => router.push('/training/sets')} />}>
+      <PageHead kicker="Mission training" title="Weekly summary" sub="Completed sessions by day." style={{ marginTop: 6 }} />
+      <Cols gap={20} style={{ marginTop: 16 }}>{summary}{today}</Cols>
+    </Page>
   );
 }

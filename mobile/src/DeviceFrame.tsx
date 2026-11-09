@@ -23,8 +23,8 @@ type DeviceKey = keyof typeof DEVICES;
 const param = (k: string) => (web ? new URLSearchParams(window.location.search).get(k) : null);
 const embedded = web && window.self !== window.top && param('device') != null;
 
-/** True on a desktop-width browser tab (not inside the frame): render <DeviceFrame/> instead of the app. */
-export const shouldFrame = web && !embedded && window.innerWidth >= 700 && param('frame') !== '0';
+/** Desktop browsers get the full responsive web layout; ?frame=1 shows the app inside an iPhone frame for demos. */
+export const shouldFrame = web && !embedded && window.innerWidth >= 700 && param('frame') === '1'; // opt-in: ?frame=1
 
 /** Inside the frame: give the app the device's safe-area insets. Elsewhere: pass through. */
 export function DeviceInsets({ children }: { children: React.ReactNode }) {

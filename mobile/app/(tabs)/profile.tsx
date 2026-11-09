@@ -1,88 +1,105 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, Share, View } from 'react-native';
+import { Animated, View } from 'react-native';
 import { router } from 'expo-router';
-import { Link as LinkIcon, FileText, Download, Lock, Cookie, LogOut, Trash, ChevronRight, Send, ShieldCheck } from 'lucide-react-native';
+import { UserPen, CalendarRange, Activity, Watch, ShieldCheck, LogOut, Clapperboard, FileHeart, Check } from 'lucide-react-native';
 import { useAuth } from '@/auth';
-import { api, API_URL } from '@/api';
-import { C } from '@/theme';
-import { Button, Card, Field, Header, Notice, Row, Screen, T, useWide } from '@/ui';
-import PlanetScene from '@/three/PlanetScene';
+import { useApi } from '@/useApi';
+import { ELEV, K } from '@/kit/tokens';
+import { Txt, useLayout, useLoop } from '@/kit/core';
+import { Button, ListGroup, ListRow, Sheet, Tag, toast } from '@/kit/ui';
+import { Cols, Page } from '@/kit/page';
+import { setStore, useStore } from '@/data/store';
 
-const ENV_LABEL: Record<string, string> = { station: 'Space station · low Earth orbit', spacecraft: 'Spacecraft · transit', lunar: 'Lunar surface base', mars: 'Mars surface base', analog: 'Earth analog habitat' };
-const ROLE_LABEL: Record<string, string> = { astronaut: 'Astronaut', surgeon: 'Flight surgeon', analog: 'Analog crew' };
+type Integrations = { providers: { key: string; status: string; name?: string }[] };
 
-function Item({ icon: Icon, label, onPress, danger }: { icon: any; label: string; onPress: () => void; danger?: boolean }) {
+function Avatar({ name }: { name: string }) {
+  const spin = useLoop(20000);
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, opacity: pressed ? 0.6 : 1 })}>
-      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: danger ? C.redTint : C.soft, alignItems: 'center', justifyContent: 'center' }}><Icon size={17} color={danger ? C.red : C.ink} /></View>
-      <T size={15} weight="m" color={danger ? C.red : C.ink} style={{ flex: 1 }}>{label}</T>
-      <ChevronRight size={18} color={C.ink3} />
-    </Pressable>
+    <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ position: 'absolute', width: 96, height: 96, borderRadius: 48, borderWidth: 1.2, borderColor: K.copperSoft, borderStyle: 'dashed', transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }} />
+      <View style={[{ width: 76, height: 76, borderRadius: 38, backgroundColor: K.copperTint, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff' }, ELEV.card]}>
+        <Txt v="display" color={K.copper}>{name.trim().charAt(0).toUpperCase() || 'A'}</Txt>
+      </View>
+    </View>
   );
 }
 
+const Status = ({ on }: { on: boolean }) => (
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 26, borderRadius: 13, backgroundColor: on ? K.okTint : K.copperTint }}>
+    {on ? <Check size={12} color={K.ok} strokeWidth={2.6} /> : null}
+    <Txt v="caption" color={on ? K.ok : K.copperInk} style={{ fontFamily: 'Geist_500Medium' }}>{on ? 'Connected' : 'Connect'}</Txt>
+  </View>
+);
+
 export default function Profile() {
   const { user, logout } = useAuth();
-  const wide = useWide();
-  const [del, setDel] = useState(false);
-  const [pw, setPw] = useState('');
-  const [err, setErr] = useState<string | null>(null);
+  const { wide } = useLayout();
+  const { data: integ } = useApi<Integrations>('/api/integrations');
+  const profile = useStore(s => s.profile);
+  const watch = useStore(s => !!s.devices.appleWatch);
+  const [watchSheet, setWatchSheet] = useState(false);
+  const [outSheet, setOutSheet] = useState(false);
   if (!user) return null;
+  const whoop = integ?.providers.some(p => (p.key === 'whoop' || p.key === 'demo') && p.status === 'connected') ?? false;
+  const signOut = async () => { setOutSheet(false); await logout(); router.replace('/welcome'); };
 
-  const exportData = async () => {
-    if (Platform.OS === 'web') { window.open(`${API_URL}/api/account/export`, '_blank'); return; }
-    const data = await api('/api/account/export');
-    await Share.share({ title: 'Perigee export', message: JSON.stringify(data, null, 2) });
-  };
-  const deleteAccount = async () => {
-    try { await api('/api/account', { method: 'DELETE', body: user.passwordless ? { confirm: pw } : { password: pw } }); await logout(); router.replace('/welcome'); } catch (e: any) { setErr(e.message); }
-  };
-  const signOut = async () => { await logout(); router.replace('/welcome'); };
+  const head = (
+    <View style={{ alignItems: 'center', marginTop: 10, marginBottom: 6 }}>
+      <Avatar name={user.name} />
+      <Txt v="title" style={{ marginTop: 10 }}>{user.name}</Txt>
+      <Txt v="sub" color={K.ink2} style={{ marginTop: 2 }}>Crew member · {profile.duration}-day mission</Txt>
+      <Txt v="mono" color={K.ink3} style={{ marginTop: 4 }}>{user.email}</Txt>
+    </View>
+  );
+
+  const left = (
+    <View style={{ gap: 12 }}>
+      <ListGroup kicker="Crew profile">
+        <ListRow icon={UserPen} title="Edit profile" sub="Name and personal details" onPress={() => router.push('/profile/edit')} />
+        <ListRow icon={CalendarRange} title="Mission & training" sub="Flight duration and plan inputs" onPress={() => router.push('/profile/mission')} />
+      </ListGroup>
+      <ListGroup kicker="Connected data">
+        <ListRow icon={Activity} title="WHOOP" sub="Recovery, sleep and HRV" right={<Status on={whoop} />} onPress={() => router.push('/integrations')} />
+        <ListRow icon={Watch} title="Apple Watch" sub="Apple Health permissions" right={<Status on={watch} />} onPress={() => setWatchSheet(true)} />
+      </ListGroup>
+    </View>
+  );
+  const right = (
+    <View style={{ gap: 12, marginTop: wide ? 0 : 12 }}>
+      <ListGroup kicker="Account">
+        <ListRow icon={ShieldCheck} title="Privacy & account controls" sub="Data permissions and account deletion" onPress={() => router.push('/profile/privacy')} />
+        <ListRow icon={FileHeart} title="Flight surgeon report" sub="Share a summary with your surgeon" onPress={() => router.push('/report')} />
+        <ListRow icon={Clapperboard} title="Replay intro" sub="Watch the Astra film again" onPress={() => router.push('/intro?replay=1')} />
+        <ListRow icon={LogOut} title="Sign out" sub="End this session" onPress={() => setOutSheet(true)} />
+      </ListGroup>
+      <Txt v="caption" color={K.ink3} center style={{ marginTop: 8 }}>Not a medical device · Not affiliated with NASA</Txt>
+    </View>
+  );
 
   return (
-    <Screen>
-      <Header title="Profile" />
-      <View style={wide ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : undefined}>
-        <View style={wide ? { flex: 1 } : undefined}>
-          <Card style={{ alignItems: 'center', paddingTop: 0, overflow: 'hidden' }}>
-            <PlanetScene env={user.environment} height={wide ? 300 : 230} />
-            <T size={26} weight="m">{user.name}</T>
-            <T size={14} color={C.ink2} style={{ marginTop: 2 }}>{ROLE_LABEL[user.role] ?? user.role} · {user.mission}</T>
-            <T size={12} color={C.ink3} style={{ marginTop: 4 }}>{ENV_LABEL[user.environment] ?? user.environment}</T>
-            <T size={12} color={C.ink3} style={{ marginTop: 2, marginBottom: 6 }}>{user.email}</T>
-          </Card>
+    <Page tabs title="Settings" maxWidth={980} header={<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Txt v="headline">Settings</Txt><Tag label="Crew account" /></View>}>
+      {head}
+      <Cols gap={16} style={{ marginTop: 14 }}>{left}{right}</Cols>
+
+      <Sheet open={watchSheet} onClose={() => setWatchSheet(false)} kicker="Apple Health" title={watch ? 'Apple Watch is connected' : 'Connect Apple Watch'}>
+        <Txt v="sub" color={K.ink2}>Astra reads heart rate, workouts and sleep from Apple Health on this iPhone. You choose each data type in the Health permission sheet, and can change it any time in Settings › Health.</Txt>
+        <View style={{ gap: 8, marginTop: 14 }}>
+          {['Heart rate & resting heart rate', 'Workouts and workout heart rate', 'Sleep analysis'].map(t => (
+            <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Check size={15} color={K.copper} /><Txt v="sub">{t}</Txt></View>
+          ))}
         </View>
-        <View style={wide ? { flex: 1 } : { marginTop: 14 }}>
-          <Card style={{ paddingVertical: 6 }}>
-            <Item icon={LinkIcon} label="Data sources · WHOOP & more" onPress={() => router.push('/integrations')} />
-            <Item icon={Send} label="Flight surgeon report" onPress={() => router.push('/report')} />
-            <Item icon={Download} label="Export my data" onPress={exportData} />
-          </Card>
-          <Card style={{ paddingVertical: 6, marginTop: 12 }}>
-            <Item icon={FileText} label="Terms of Use" onPress={() => router.push('/legal/terms')} />
-            <Item icon={Lock} label="Privacy Policy" onPress={() => router.push('/legal/privacy')} />
-            <Item icon={Cookie} label="Cookie Policy" onPress={() => router.push('/legal/cookies')} />
-          </Card>
-          <Card style={{ paddingVertical: 6, marginTop: 12 }}>
-            <Item icon={LogOut} label="Sign out" onPress={signOut} />
-            <Item icon={Trash} label="Delete account" danger onPress={() => setDel(!del)} />
-            {del && (
-              <View style={{ paddingBottom: 12 }}>
-                <Notice kind="red" title="This permanently deletes your account" body="All your measurements, check-ins, connections and consents are erased from our servers. This cannot be undone." />
-                {user.passwordless
-                  ? <Field label={`Type ${user.email} to confirm`} value={pw} onChangeText={setPw} autoCapitalize="none" keyboardType="email-address" />
-                  : <Field label="Confirm with your password" value={pw} onChangeText={setPw} secureTextEntry />}
-                {err ? <T size={13} color={C.red} style={{ marginBottom: 8 }}>{err}</T> : null}
-                <Button title="Delete forever" kind="danger" disabled={!pw} onPress={deleteAccount} />
-              </View>
-            )}
-          </Card>
-          <Row gap={8} style={{ marginTop: 16, justifyContent: 'center' }}>
-            <ShieldCheck size={14} color={C.ink3} />
-            <T size={12} color={C.ink3}>Not a medical device · Not affiliated with NASA</T>
-          </Row>
+        <Button title={watch ? 'Disconnect' : 'Continue to Apple Health'} kind={watch ? 'secondary' : 'primary'} style={{ marginTop: 20 }}
+          onPress={() => { setStore(s => ({ ...s, devices: { ...s.devices, appleWatch: !watch } })); setWatchSheet(false); toast(watch ? 'Apple Watch disconnected' : 'Apple Watch connected · preview'); }} />
+        <Txt v="caption" color={K.ink3} center style={{ marginTop: 10 }}>Preview · HealthKit access is requested in the iOS build.</Txt>
+      </Sheet>
+
+      <Sheet open={outSheet} onClose={() => setOutSheet(false)} kicker="Account" title="Sign out of Astra?">
+        <Txt v="sub" color={K.ink2}>Your data stays on the server. You can sign in again with your crew email.</Txt>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+          <Button title="Cancel" kind="secondary" style={{ flex: 1 }} onPress={() => setOutSheet(false)} />
+          <Button title="Sign out" style={{ flex: 1 }} onPress={signOut} />
         </View>
-      </View>
-    </Screen>
+      </Sheet>
+    </Page>
   );
 }

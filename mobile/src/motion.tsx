@@ -16,10 +16,13 @@ type Dir = 'forward' | 'back';
 type Leaver = (dir: Dir) => Promise<void>;
 let current: Leaver | null = null;
 let lastDir: Dir = 'forward';
+let seamless = false;
 
 export const nav = {
   push: async (href: Href) => { await current?.('forward'); lastDir = 'forward'; router.push(href); },
   replace: async (href: Href) => { await current?.('forward'); lastDir = 'forward'; router.replace(href); },
+  /** Next screen appears already in place (no slide/fade) — the intro video dissolves into it. */
+  seamless: () => { seamless = true; },
   back: async (fallback: Href = '/welcome') => {
     await current?.('back'); lastDir = 'back';
     if (router.canGoBack()) router.back(); else router.replace(fallback);
@@ -33,8 +36,11 @@ export function MotionScreen({ children, style }: { children: React.ReactNode; s
   const [tick, setTick] = useState(0);
   const busy = useRef(false);
   useFocusEffect(useCallback(() => {
-    p.setValue(lastDir === 'forward' ? 1 : -1);
-    Animated.timing(p, { toValue: 0, duration: 520, easing: EASE_OUT, useNativeDriver: native }).start();
+    if (seamless) { seamless = false; p.setValue(0); }
+    else {
+      p.setValue(lastDir === 'forward' ? 1 : -1);
+      Animated.timing(p, { toValue: 0, duration: 520, easing: EASE_OUT, useNativeDriver: native }).start();
+    }
     setTick(t => t + 1);
     const leave: Leaver = dir => new Promise(res => {
       if (busy.current) return res();

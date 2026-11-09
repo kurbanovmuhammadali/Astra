@@ -1,72 +1,111 @@
-import React, { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View } from 'react-native';
 import { router } from 'expo-router';
-import { useApi } from '@/useApi';
-import { C, statusColor, statusTint, statusWord } from '@/theme';
-import type { Dashboard } from '@/types';
-import { Card, FadeIn, Header, Loading, Row, Screen, StatusDot, T, useWide } from '@/ui';
-import BodyScene from '@/three/BodyScene';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Activity, Eye, HeartPulse, Footprints, RotateCcw, Move3d, ChevronRight } from 'lucide-react-native';
+import { K, RAD, ELEV, toneWord } from '@/kit/tokens';
+import { Kicker, Pressy, Swap, Txt, useLayout } from '@/kit/core';
+import { Card, Chip, ChipRow, Dot, ListGroup, ListRow, Stepper, Tag } from '@/kit/ui';
+import { Cols, Page } from '@/kit/page';
+import AnatomyViewer from '@/three/AnatomyViewer';
+import { LAYERS, LayerKey, findings as allFindings, useCrew } from '@/data/crew';
+
+const ICON: Record<string, any> = { vision: Eye, heart: HeartPulse, knee: Footprints };
 
 export default function Body() {
-  const { data } = useApi<Dashboard>('/api/dashboard');
-  const [sel, setSel] = useState<string | null>('heart');
-  const wide = useWide();
-  if (!data) return <Screen><Loading /></Screen>;
-  const statuses = Object.fromEntries(data.systems.map(s => [s.key, s.status]));
-  const sys = data.systems.find(s => s.key === sel);
+  const crew = useCrew();
+  const { wide, gutter } = useLayout();
+  const [li, setLi] = useState(0);
+  const [sel, setSel] = useState<string | null>(null);
+  const layer = LAYERS[li];
+  const today = crew.days[6];
+  const all = useMemo(() => allFindings(today.rhr), [today.rhr]);
+  const marks = all.filter(f => f.layers.includes(layer.key));
+  const setLayer = (k: LayerKey) => { setSel(null); setLi(LAYERS.findIndex(l => l.key === k)); };
+  const step = (n: number) => { setSel(null); setLi(i => (i + n + LAYERS.length) % LAYERS.length); };
+  const selected = all.find(f => f.id === sel);
 
-  const detail = sys && (
-    <FadeIn key={sys.key}>
-      <Card>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <T size={22} weight="m">{sys.label}</T>
-          <View style={{ backgroundColor: statusTint(sys.status), borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
-            <T size={12} weight="sb" color={statusColor(sys.status)}>{statusWord(sys.status)}</T>
-          </View>
-        </Row>
-        <T size={12} color={C.ink3} style={{ marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Hazard · {sys.hazard}</T>
-        <T size={14} color={C.ink2} style={{ marginTop: 10 }}>{sys.blurb}</T>
-        <View style={{ height: 1, backgroundColor: C.line, marginVertical: 14 }} />
-        {sys.metrics.map(k => {
-          const m = data.metrics[k];
-          if (!m) return null;
-          return (
-            <Pressable key={k} onPress={() => router.push(`/metric/${k}`)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
-              <View style={{ flex: 1 }}>
-                <T size={15} weight="m">{m.label}</T>
-                <StatusDot status={m.status} />
-              </View>
-              <T size={20} weight="m">{m.value == null ? '—' : m.value2 != null ? `${m.value}/${m.value2}` : m.value}</T>
-              <T size={12} color={C.ink3} style={{ marginLeft: 4, width: 64 }}>{m.unit}</T>
-            </Pressable>
-          );
-        })}
-        {sys.reasons.filter(r => r.symptom).map(r => (
-          <Row key={r.symptom} gap={8} style={{ paddingVertical: 6 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor(r.status) }} /><T size={14}>Symptom reported: {r.label}</T></Row>
+  const viewer = (
+    <View style={[{ borderRadius: RAD.l, overflow: 'hidden', borderWidth: 1, borderColor: K.hair }, ELEV.card]}>
+      <LinearGradient colors={['#FBEFE7', '#F3DCCD', '#EBCBB8']} locations={[0, 0.6, 1]} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+      <AnatomyViewer layer={layer.key} findings={marks} selected={sel} onSelect={setSel} height={wide ? 640 : 430} />
+      <View pointerEvents="box-none" style={{ position: 'absolute', top: 12, left: 12, right: 12, flexDirection: 'row', justifyContent: 'space-between' }}>
+        <View style={{ backgroundColor: 'rgba(255,253,251,0.85)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 }}><Kicker color={K.ink2}>{sel ? `Focus · ${selected?.label}` : 'Anterior view'}</Kicker></View>
+        {sel ? <Pressy label="Reset view" onPress={() => setSel(null)}><View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,253,251,0.9)', alignItems: 'center', justifyContent: 'center' }}><RotateCcw size={15} color={K.ink} /></View></Pressy> : null}
+      </View>
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: 12, right: 14, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        <Txt v="mono" color={K.ink2} upper style={{ fontSize: 9.5 }}>Drag to rotate</Txt><Move3d size={13} color={K.ink2} />
+      </View>
+    </View>
+  );
+
+  const legend = (
+    <View style={{ marginTop: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+        {(['ok', 'watch', 'flag'] as const).map(t => <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Dot tone={t} size={7} /><Txt v="caption" color={K.ink2}>{toneWord(t)}</Txt></View>)}
+      </View>
+      <Txt v="caption" color={K.ink3} style={{ marginTop: 6 }}>Dots mark recorded findings. Areas without data are unmarked.</Txt>
+    </View>
+  );
+
+  const side = (
+    <View>
+      <Swap k={layer.key}>
+        <Card style={{ marginTop: wide ? 0 : 16 }}>
+          <Kicker>{layer.label} layer</Kicker>
+          <Txt v="headline" style={{ marginTop: 6 }}>{layer.topic}</Txt>
+          <Txt v="sub" color={K.ink2} style={{ marginTop: 6 }}>{layer.text}</Txt>
+          {layer.rows.length ? <View style={{ marginTop: 10, gap: 8 }}>{layer.rows.map(([a, b]) => (
+            <View key={a} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: K.hair }}>
+              <Txt v="subM">{a}</Txt><Txt v="mono" color={K.ink3} upper>{b}</Txt>
+            </View>
+          ))}</View> : null}
+        </Card>
+      </Swap>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22, marginBottom: 10 }}>
+        <Txt v="headline">Findings</Txt>
+        <Txt v="mono" color={K.ink3} upper>{marks.length} on this layer</Txt>
+      </View>
+      <ListGroup>
+        {all.map(f => (
+          <ListRow key={f.id} icon={ICON[f.id] ?? Activity} title={f.title} sub={f.sub} tone={f.tone} current={sel === f.id}
+            onPress={() => { if (!f.layers.includes(layer.key)) setLayer('overview'); setSel(sel === f.id ? null : f.id); }} />
         ))}
+      </ListGroup>
+      {selected ? (
+        <Swap k={selected.id}>
+          <Card style={{ marginTop: 10 }} onPress={() => router.push(selected.route as any)} label={`Open ${selected.title}`}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Dot tone={selected.tone} pulse />
+              <View style={{ flex: 1 }}>
+                <Txt v="subM">{toneWord(selected.tone)} · {selected.title}</Txt>
+                <Txt v="caption" color={K.ink2}>{selected.id === 'heart' ? 'Open the 7-day heart-rate trend' : 'Add detail in a crew check-in'}</Txt>
+              </View>
+              <ChevronRight size={17} color={K.ink3} />
+            </View>
+          </Card>
+        </Swap>
+      ) : null}
+      <Card onPress={() => router.push('/signals')} label="Health signals" style={{ marginTop: 14 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1 }}><Kicker>Body analytics</Kicker><Txt v="headline" style={{ marginTop: 4 }}>Health signals</Txt><Txt v="caption" color={K.ink2}>Recovery, heart-rate trend and personal dosimetry</Txt></View>
+          <ChevronRight size={18} color={K.ink3} />
+        </View>
       </Card>
-    </FadeIn>
+    </View>
   );
 
   return (
-    <Screen>
-      <Header title="Body map" sub="Tap a glowing point to inspect a system" />
-      <View style={wide ? { flexDirection: 'row', gap: 24 } : undefined}>
-        <View style={wide ? { flex: 1 } : undefined}>
-          <View style={{ borderRadius: 32, overflow: 'hidden' }}>
-            <BodyScene statuses={statuses} selected={sel} onSelect={setSel} height={wide ? 600 : 440} />
-          </View>
-          <Row wrap gap={8} style={{ justifyContent: 'center', marginTop: 4, marginBottom: 16 }}>
-            {data.systems.map(s => (
-              <Pressable key={s.key} onPress={() => setSel(s.key)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: sel === s.key ? C.ink : '#fff' }}>
-                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor(s.status) }} />
-                <T size={13} weight="m" color={sel === s.key ? '#fff' : C.ink}>{s.label}</T>
-              </Pressable>
-            ))}
-          </Row>
-        </View>
-        <View style={wide ? { flex: 1 } : undefined}>{detail}</View>
+    <Page tabs title="Body explorer" header={<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Txt v="headline">Body explorer</Txt><Tag label="3D reference" /></View>}>
+      <Stepper label={`${layer.label} · system layers`} onPrev={() => step(-1)} onNext={() => step(1)} style={{ marginTop: 8 }} />
+      <View style={{ marginTop: 12 }}>
+        <ChipRow gutter={gutter}>{LAYERS.map(l => <Chip key={l.key} label={l.label} on={l.key === layer.key} onPress={() => setLayer(l.key)} />)}</ChipRow>
       </View>
-    </Screen>
+      <Cols ratio={[1.25, 1]} gap={28} style={{ marginTop: 14 }}>
+        <View>{viewer}{legend}</View>
+        {side}
+      </Cols>
+      <Txt v="caption" color={K.ink3} center style={{ marginTop: 22 }}>Reference anatomy: BodyParts3D (CC BY-SA 2.1 JP) · Z-Anatomy (CC BY-SA 4.0). Not diagnostic.</Txt>
+    </Page>
   );
 }

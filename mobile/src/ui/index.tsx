@@ -9,6 +9,7 @@ import Svg, { Circle, Line, Path, Rect, G, Defs, LinearGradient as SvgGrad, Stop
 import { Check, ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { C, F, R, shadow, statusColor, statusWord } from '../theme';
+import { Backdrop } from '../kit/page';
 
 // ----------------------------------------------------------------------------- text
 type TP = TextProps & { size?: number; weight?: keyof typeof F; color?: string; center?: boolean; style?: StyleProp<TextStyle> };
@@ -32,7 +33,7 @@ export function Screen({ children, scroll = true, bg = 'light', pad = true, bott
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {bg === 'bronze'
         ? <LinearGradient colors={C.bronze} locations={[0, 0.35, 0.72, 1]} style={StyleSheet.absoluteFill} />
-        : <LinearGradient colors={['#F6F5F3', '#EFECE8', '#E8E3DD']} style={StyleSheet.absoluteFill} />}
+        : <Backdrop />}
       {scroll ? <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{inner}</ScrollView> : inner}
     </View>
   );
