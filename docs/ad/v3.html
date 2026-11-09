@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Astra Launch Ad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+<!--
+  Astra launch ad v3 — 15 s, 9:16 (1080×1920). Space mission from the first frame.
+  One continuous motif: the line of the horizon → a pulse line → an orbit → the Astra star.
+    0–4 s   dawn over Earth (NASA Earth model), camera trucks along the horizon, a ship passes close in front
+    4–8 s   the horizon arc peels off and becomes a pulse line · "HRV below your baseline"
+    8–12 s  one calm full-screen frame of the real Astra plan screen (what changed and why)
+    12–15 s back in orbit; a light on the orbit folds into the Astra star · Care beyond Earth
+  Pure function of time: render(t). Export: `node render.mjs` (serves over http; WebGL on the Apple GPU).
+  v1 and v2 are kept as v1.html / v2.html.
+-->
+<style>
+  :root { --ui-bg: #F3EEEA; --ui-fg: #2B1E18; --ui-card: #ffffff; --ui-line: #E4D9D2; --copper: #B8693F; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ui-bg: #0E0B0C; --ui-fg: #F1EAE6; --ui-card: #1E1714; --ui-line: #3A2E28; } }
+  :root[data-theme="dark"] { --ui-bg: #0E0B0C; --ui-fg: #F1EAE6; --ui-card: #1E1714; --ui-line: #3A2E28; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--ui-bg); color: var(--ui-fg); font-family: 'Inter Tight', system-ui, sans-serif; overflow: hidden;
+         display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+  body.export { background: #000; display: block; }
+  #holder { position: relative; flex: none; border-radius: 28px; overflow: hidden; box-shadow: 0 30px 80px -30px rgba(0,0,0,.6); background: #000; }
+  body.export #holder { border-radius: 0; box-shadow: none; }
+  #stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 0 0; overflow: hidden; background: #000; color: #fff; font-family: 'Inter Tight', system-ui, sans-serif; }
+  .abs { position: absolute; }
+  .c { position: absolute; transform: translate(-50%, -50%); }
+  .nw { white-space: nowrap; }
+  #gl { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; }
+  .gtext { -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #ui { display: flex; align-items: center; gap: 12px; width: min(560px, calc(100vw - 32px)); background: var(--ui-card); border: 1px solid var(--ui-line); border-radius: 18px; padding: 10px 14px; flex: none; }
+  #ui button { all: unset; cursor: pointer; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--copper); color: #fff; flex: none; }
+  #ui button:focus-visible { outline: 2px solid #E3B79E; outline-offset: 2px; }
+  #ui input[type=range] { flex: 1; accent-color: var(--copper); min-width: 0; }
+  #ui .t { font-variant-numeric: tabular-nums; font-size: 13px; opacity: .8; width: 76px; text-align: right; flex: none; }
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font: 500 40px 'Inter Tight', sans-serif; opacity: .6; }
+  body.export #ui { display: none; }
+  @media (max-width: 600px) { body { justify-content: flex-start; gap: 10px; } #holder { border-radius: 0; box-shadow: none; } }
+</style>
+</head>
+<body>
+<div id="holder"><div id="stage">
+  <canvas id="gl" width="1080" height="1920"></canvas>
+  <!-- grade: warm key from the sun side, cool shadows, vignette -->
+  <div id="grade" class="abs" style="inset:0;pointer-events:none;background:
+    radial-gradient(90% 55% at 100% 30%, rgba(255,160,100,.16), rgba(255,150,90,0) 70%),
+    radial-gradient(140% 90% at 50% 50%, rgba(0,0,0,0) 55%, rgba(4,8,20,.55) 100%)"></div>
+
+  <!-- the motif: horizon → pulse → orbit → star -->
+  <svg id="motif" class="abs" style="left:0;top:0" width="1080" height="1920" viewBox="0 0 1080 1920">
+    <defs>
+      <linearGradient id="gLine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1080" y2="0">
+        <stop offset="0" stop-color="#8EC5FF" stop-opacity=".0"/><stop offset=".18" stop-color="#9FD0FF"/><stop offset=".55" stop-color="#FFF4EC"/><stop offset=".85" stop-color="#FFB38A"/><stop offset="1" stop-color="#FF8A5B" stop-opacity=".0"/>
+      </linearGradient>
+      <linearGradient id="gStar" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE3CC"/><stop offset=".5" stop-color="#FFB38A"/><stop offset="1" stop-color="#E07A4B"/></linearGradient>
+      <filter id="fGlow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+      <radialGradient id="gDot"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="#FFD9BF"/><stop offset="1" stop-color="#FF9A6B" stop-opacity="0"/></radialGradient>
+    </defs>
+    <path id="baseLine" fill="none" stroke="#FFFFFF" stroke-opacity=".55" stroke-width="3" stroke-dasharray="12 14"/>
+    <text id="baseLabel" x="1000" text-anchor="end" font-family="Inter Tight" font-size="30" font-weight="500" fill="#FFFFFF" fill-opacity=".7">your baseline</text>
+    <path id="lineGlow" fill="none" stroke="#FF9A6B" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity=".55" filter="url(#fGlow)"/>
+    <path id="line" fill="none" stroke="url(#gLine)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <g id="orbitG"><path id="orbitGlow" fill="none" stroke="#FFB38A" stroke-width="16" opacity=".45" filter="url(#fGlow)"/><path id="orbit" fill="none" stroke="#FFE9DA" stroke-width="3.5" stroke-linecap="round"/></g>
+    <circle id="dotGlow" r="60" fill="url(#gDot)"/>
+    <circle id="dot" r="9" fill="#fff"/>
+  </svg>
+
+  <!-- 4–8 s copy -->
+  <div id="bKicker" class="abs nw" style="left:90px;top:520px;font-size:34px;font-weight:600;letter-spacing:6px;color:#FFB38A">HRV · SOL 214</div>
+  <div id="bH1" class="abs nw" style="left:86px;top:580px;font-size:118px;font-weight:700;letter-spacing:-4px;line-height:1">Below your</div>
+  <div id="bH2" class="abs nw gtext" style="left:86px;top:705px;font-size:118px;font-weight:700;letter-spacing:-4px;line-height:1.05;background-image:linear-gradient(90deg,#FFE3CC,#FFB38A 45%,#FF8A5B)">baseline.</div>
+  <div id="bSub" class="abs nw" style="left:90px;top:860px;font-size:42px;color:rgba(255,255,255,.75)">−12% · three short nights in a row</div>
+
+  <!-- 8–12 s the real Astra plan screen, full frame -->
+  <div id="app" class="abs" style="inset:0;overflow:hidden;background:#F3F0ED;display:none">
+    <div id="appScroll" class="abs" style="left:0;top:150px;width:1080px"><img id="appImg" src="assets/app/plan-tall.png" alt="" style="width:1080px;display:block"></div>
+    <div id="sweep" class="abs" style="left:43px;width:996px;height:0;border-radius:64px;overflow:hidden;mix-blend-mode:screen">
+      <div id="sweepBand" class="abs" style="top:0;bottom:0;width:420px;background:linear-gradient(100deg,rgba(255,160,110,0),rgba(255,170,120,.28),rgba(255,160,110,0))"></div>
+    </div>
+    <div id="appStatus" class="abs" style="left:0;top:0;width:1080px;height:150px">
+      <div class="abs" style="left:100px;top:52px;font-size:46px;font-weight:600;color:#1C1714">9:41</div>
+      <div class="abs" style="left:50%;top:32px;width:330px;height:96px;margin-left:-165px;border-radius:48px;background:#000"></div>
+      <div class="abs" style="right:92px;top:60px;display:flex;gap:14px;align-items:flex-end">
+        <span style="display:flex;gap:5px;align-items:flex-end"><i style="width:9px;height:14px;background:#1C1714;border-radius:3px"></i><i style="width:9px;height:20px;background:#1C1714;border-radius:3px"></i><i style="width:9px;height:26px;background:#1C1714;border-radius:3px"></i><i style="width:9px;height:32px;background:#1C1714;border-radius:3px"></i></span>
+        <span style="width:66px;height:32px;border:3px solid #1C1714;border-radius:10px;padding:3px;display:block"><i style="display:block;height:100%;width:80%;background:#1C1714;border-radius:5px"></i></span>
+      </div>
+    </div>
+    <div id="appTab" class="abs" style="left:0;bottom:0;width:1080px;height:330px;background:url(assets/app/plan-tall.png) center bottom/1080px auto no-repeat"></div>
+  </div>
+
+  <!-- 12–15 s end -->
+  <svg id="star" class="c" style="left:540px;top:580px;overflow:visible" width="170" height="170" viewBox="0 0 24 24">
+    <path fill="url(#gStar)" d="M12 1.5C12.9 8 16 11.1 22.5 12 16 12.9 12.9 16 12 22.5 11.1 16 8 12.9 1.5 12 8 11.1 11.1 8 12 1.5Z" style="filter:drop-shadow(0 0 1.2px rgba(255,170,120,.9))"/>
+  </svg>
+  <div id="eWord" class="c nw" style="left:552px;top:735px;font-size:60px;font-weight:600;letter-spacing:22px;color:#fff">ASTRA</div>
+  <div id="eTag" class="c nw" style="left:540px;top:850px;font-size:104px;font-weight:700;letter-spacing:-4px;color:#fff">Care beyond <span class="gtext" style="background-image:linear-gradient(90deg,#FFE3CC,#FFB38A 50%,#FF8A5B)">Earth.</span></div>
+  <div id="loading">Loading Earth…</div>
+</div></div>
+
+<div id="ui" role="group" aria-label="Playback">
+  <button id="play" aria-label="Pause"></button>
+  <input id="scrub" type="range" min="0" max="15" step="0.01" value="0" aria-label="Timeline">
+  <span class="t" id="time">0.00s</span>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { TessellateModifier } from 'three/addons/modifiers/TessellateModifier.js';
+
+const D = 15, W = 1080, H = 1920, R = 500;
+const EXPORT = new URLSearchParams(location.search).has('export');
+if (EXPORT) document.body.classList.add('export');
+const $ = id => document.getElementById(id);
+const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, a, b) => cl((t - a) / (b - a));
+const L = (a, b, k) => a + (b - a) * k;
+const E = {
+  out: x => 1 - Math.pow(1 - x, 3), in: x => x * x * x,
+  expo: x => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x)),
+  io: x => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2),
+  sine: x => -(Math.cos(Math.PI * x) - 1) / 2,
+  back: x => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
+};
+const deg = THREE.MathUtils.degToRad;
+function S(el, o) {
+  const op = cl(o.o ?? 1);
+  el.style.opacity = op; el.style.visibility = op <= 0.002 ? 'hidden' : 'visible';
+  if (op <= 0.002) return;
+  let tr = el.classList.contains('c') ? 'translate(-50%,-50%) ' : '';
+  tr += `translate(${(o.x || 0).toFixed(2)}px,${(o.y || 0).toFixed(2)}px)`;
+  if (o.r) tr += ` rotate(${o.r.toFixed(2)}deg)`;
+  tr += ` scale(${(o.s ?? 1).toFixed(4)})`;
+  el.style.transform = tr;
+  if (o.b !== undefined) el.style.filter = o.b > 0.3 ? `blur(${o.b.toFixed(1)}px)` : 'none';
+}
+/** V1 rhythm: soft blur-in, readable hold, soft blur-out. */
+function bio(t, a, c = 1e9, d = 0.7, B = 22, dy = 26, od = 0.4, ody = -20) {
+  if (t < c) { const k = E.expo(p(t, a, a + d)); return { o: p(t, a, a + d * 0.6), b: (1 - k) * B, y: (1 - k) * dy }; }
+  const k = E.io(p(t, c, c + od)); return { o: 1 - k, b: k * B, y: k * ody };
+}
+
+// ------------------------------------------------------------------ three.js scene
+const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.35;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(36, W / H, 0.3, 60000);
+
+// Earth — NASA model; its quad-sphere is tessellated and re-projected so the horizon stays perfectly round up close
+const gltf = await new GLTFLoader().loadAsync('assets/models/earth.glb');
+let src; gltf.scene.traverse(o => { if (o.isMesh) src = o; });
+const geo = new TessellateModifier(7, 6).modify(src.geometry.toNonIndexed());
+{
+  const pos = geo.attributes.position, nrm = new Float32Array(pos.count * 3), v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).normalize(); nrm.set([v.x, v.y, v.z], i * 3); v.multiplyScalar(R); pos.setXYZ(i, v.x, v.y, v.z); }
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+}
+const om = src.material;
+// NASA's texture is a cube cross on a white sheet; paint the unused cells ocean-blue so grazing-angle mip bleed stays invisible
+for (const tex of [om.map, om.normalMap]) {
+  const img = tex.image, cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+  const g = cv.getContext('2d'); g.drawImage(img, 0, 0);
+  const cw = img.width / 4, chh = img.height / 3;
+  g.fillStyle = tex === om.map ? '#06142E' : '#8080FF';
+  [[0, 0], [1, 0], [3, 0], [1, 2], [2, 2], [3, 2]].forEach(([cx, cy]) => g.fillRect(cx * cw, cy * chh, cw, chh));
+  tex.image = cv; tex.needsUpdate = true;
+}
+om.map.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const earthMat = new THREE.MeshStandardMaterial({ map: om.map, normalMap: om.normalMap, normalScale: new THREE.Vector2(1.6, 1.6), roughness: 0.78, metalness: 0 });
+const earth = new THREE.Mesh(geo, earthMat);
+const earthPivot = new THREE.Group(); earthPivot.add(earth); scene.add(earthPivot);
+
+// atmosphere: thin bright limb + wide soft halo; blue on the day side, warm at the terminator (dawn)
+const atmo = (radius, mode, strength, power) => new THREE.Mesh(new THREE.SphereGeometry(radius, 256, 256), new THREE.ShaderMaterial({
+  uniforms: { sun: { value: new THREE.Vector3(0, 0, -1) }, strength: { value: strength }, power: { value: power }, cold: { value: new THREE.Color('#5FA8FF') }, warm: { value: new THREE.Color('#FFA36E') } },
+  vertexShader: `varying vec3 vN; varying vec3 vW; void main(){ vN = normalize(mat3(modelMatrix) * normal); vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+  fragmentShader: `uniform vec3 sun, cold, warm; uniform float strength, power; varying vec3 vN; varying vec3 vW;
+    void main(){
+      vec3 V = normalize(cameraPosition - vW); vec3 N = normalize(vN);
+      float f = ${mode === 'limb' ? 'pow(1.0 - abs(dot(V, N)), power)' : 'pow(clamp(-dot(V, N), 0.0, 1.0), power)'};
+      float lit = dot(N, sun);
+      float day = smoothstep(-0.30, 0.35, lit);
+      float dusk = exp(-pow(lit / 0.25, 2.0));
+      vec3 col = mix(cold, warm, clamp(dusk * 0.85 - day * 0.2, 0.0, 1.0));
+      float a = f * strength * (0.03 + day * 0.9 + dusk * 0.55);
+      gl_FragColor = vec4(col * a, a);
+    }`,
+  transparent: true, depthWrite: false, side: mode === 'limb' ? THREE.FrontSide : THREE.BackSide, blending: THREE.AdditiveBlending,
+}));
+const limb = atmo(R * 1.012, 'limb', 1.25, 5.5);
+const halo = atmo(R * 1.05, 'halo', 1.5, 4.0);
+scene.add(limb, halo);
+
+const sunLight = new THREE.DirectionalLight('#FFD3AE', 4.2);
+scene.add(sunLight, sunLight.target);
+scene.add(new THREE.AmbientLight('#5C7FC8', 0.12)); // earthshine/moonlight so the night side still reads as Earth
+
+// stars
+{
+  const n = 3500, g = new THREE.BufferGeometry(), a = new Float32Array(n * 3), c = new Float32Array(n * 3);
+  let s = 7; const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let i = 0; i < n; i++) {
+    const u = r() * 2 - 1, th = r() * Math.PI * 2, q = Math.sqrt(1 - u * u);
+    a.set([q * Math.cos(th) * 40000, u * 40000, q * Math.sin(th) * 40000], i * 3);
+    const b = 0.35 + Math.pow(r(), 3) * 0.9, warmth = r();
+    c.set([b, b * (0.92 + 0.08 * warmth), b * (0.85 + 0.25 * (1 - warmth))], i * 3);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(a, 3)); g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ size: 2.4, sizeAttenuation: false, vertexColors: true, transparent: true, depthWrite: false })));
+}
+
+// sun glow (occluded by the Earth until it rises over the limb)
+const glowTex = (() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 512; const g = cv.getContext('2d');
+  const gr = g.createRadialGradient(256, 256, 0, 256, 256, 256);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.06, 'rgba(255,236,214,.95)'); gr.addColorStop(0.2, 'rgba(255,170,110,.35)'); gr.addColorStop(0.5, 'rgba(255,120,70,.08)'); gr.addColorStop(1, 'rgba(255,120,70,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 512, 512);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+sunSprite.scale.setScalar(9000);
+scene.add(sunSprite);
+
+// ship — the user's Astra artwork (stand-in until a proper satellite model), lit in-shader:
+// warm key from the sun, cold bounce from Earth, and a glint that slides over the hull as it passes
+const shipTex = await new THREE.TextureLoader().loadAsync('assets/ship.png');
+shipTex.colorSpace = THREE.SRGBColorSpace; shipTex.anisotropy = 8;
+const shipMat = new THREE.ShaderMaterial({
+  uniforms: { map: { value: shipTex }, sweep: { value: -1 }, warm: { value: new THREE.Color('#FFC59A') }, cold: { value: new THREE.Color('#5E97FF') }, key: { value: 1 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform sampler2D map; uniform float sweep, key; uniform vec3 warm, cold; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(map, vUv); if (c.a < 0.03) discard;
+      float lum = dot(c.rgb, vec3(0.3, 0.59, 0.11));
+      vec3 col = c.rgb * mix(0.35, 1.15, smoothstep(0.1, 1.0, vUv.x * 0.6 + vUv.y * 0.55)) * key;
+      col = col * mix(vec3(1.0), warm, 0.3) + cold * (1.0 - vUv.y) * 0.22 * (0.3 + lum);
+      float band = vUv.x * 0.8 + (1.0 - vUv.y) * 0.45;
+      col += warm * exp(-pow((band - sweep) / 0.05, 2.0)) * (0.25 + lum * 1.4) * 1.6;
+      gl_FragColor = vec4(col, c.a);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+});
+const ship = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 7.6 * 543 / 900), shipMat);
+scene.add(ship);
+
+// ------------------------------------------------------------------ cameras
+const U0 = new THREE.Vector3(0, 1, 0), F0 = new THREE.Vector3(0, 0, -1);
+/** Low orbit camera: theta moves it sideways along the horizon; pitch < 0 looks down toward the limb. */
+function orbitCam(theta, alt, pitch, yaw, roll, fov) {
+  const u = new THREE.Vector3(Math.sin(theta), Math.cos(theta), 0);
+  camera.position.copy(u).multiplyScalar(R + alt);
+  const fwd = F0.clone().multiplyScalar(Math.cos(deg(pitch))).addScaledVector(u, Math.sin(deg(pitch))).applyAxisAngle(u, deg(yaw));
+  camera.up.copy(u).applyAxisAngle(fwd, deg(roll));
+  camera.lookAt(camera.position.clone().add(fwd));
+  camera.fov = fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+}
+function setSun(dir) {
+  dir.normalize();
+  sunLight.position.copy(dir).multiplyScalar(2000); sunLight.target.position.set(0, 0, 0);
+  limb.material.uniforms.sun.value.copy(dir); halo.material.uniforms.sun.value.copy(dir);
+  sunSprite.position.copy(camera.position).addScaledVector(dir, 30000);
+}
+const project = v => { const q = v.clone().project(camera); return [(q.x + 1) / 2 * W, (1 - q.y) / 2 * H, q.z]; };
+/** The visible horizon (limb) as a screen-space polyline, left → right. */
+function limbPoints(n = 360) {
+  const C = camera.position, d = C.length(), ch = C.clone().normalize();
+  const center = ch.clone().multiplyScalar(R * R / d), rho = R * Math.sqrt(1 - (R / d) ** 2);
+  const e1 = new THREE.Vector3().crossVectors(ch, Math.abs(ch.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0)).normalize(), e2 = new THREE.Vector3().crossVectors(ch, e1);
+  const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2;
+    const P = center.clone().addScaledVector(e1, Math.cos(a) * rho).addScaledVector(e2, Math.sin(a) * rho);
+    if (P.clone().sub(C).dot(fwd) <= 1) continue;
+    const s = project(P); if (s[0] > -900 && s[0] < W + 900) pts.push(s);
+  }
+  return pts.sort((a, b) => a[0] - b[0]);
+}
+const yAt = (pts, x) => { if (!pts.length) return H * 0.6; if (x <= pts[0][0]) return pts[0][1]; for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const k = (x - pts[i - 1][0]) / (pts[i][0] - pts[i - 1][0] || 1); return L(pts[i - 1][1], pts[i][1], k); } return pts[pts.length - 1][1]; };
+const poly = pts => pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join('');
+
+// heartbeat shape (one beat per period), in px above the resting line
+const ecg = u => 16 * Math.exp(-(((u - 0.18) / 0.035) ** 2)) - 18 * Math.exp(-(((u - 0.355) / 0.012) ** 2)) + 175 * Math.exp(-(((u - 0.39) / 0.011) ** 2))
+  - 58 * Math.exp(-(((u - 0.425) / 0.013) ** 2)) + 34 * Math.exp(-(((u - 0.64) / 0.05) ** 2));
+
+// ------------------------------------------------------------------ timeline
+const app = $('app'), appImg = $('appImg');
+const SC = 1080 / 1179; // capture px → stage px
+let statusColor = '#F4F1EE';
+function render(t) {
+  // ---------------- GL shots
+  const glVisible = !(t > 8.6 && t < 11.7);
+  if (glVisible) {
+    if (t < 9) {
+      // A + B: orbit at dawn, trucking sideways along the horizon; low sun from the right
+      const kA = E.sine(p(t, 0, 4)), kB = E.sine(p(t, 3.6, 8));
+      const theta = L(-0.07, 0.03, E.sine(p(t, 0, 8)));
+      const alt = L(window.ALT0 ?? 125, window.ALT1 ?? 100, kA);
+      const dip = THREE.MathUtils.radToDeg(Math.acos(R / (R + alt)));
+      const pitch = -(dip + L(window.OFF0 ?? 3, window.OFF1 ?? 0.5, E.io(p(t, 0.3, 4.2))) - L(0, 9, kB));
+      const fov = L(42, 36, E.io(p(t, 2.6, 4.4))) + L(0, 2, kB);
+      orbitCam(theta, alt, pitch, L(-3, 3, kA), L(1.5, -2.5, E.sine(p(t, 0, 8))), fov);
+      const e = L(window.SE0 ?? 16, window.SE1 ?? 24, E.out(p(t, 0, 5)));
+      setSun(F0.clone().multiplyScalar(Math.cos(deg(e))).addScaledVector(U0, Math.sin(deg(e))).applyAxisAngle(U0, deg(window.SAZ ?? -58)));
+      earthPivot.rotation.set(window.EX ?? 0.35, (window.EY ?? 2.15) + t * 0.006, 0);
+      // the ship passes close, between camera and planet
+      const ks = p(t, 0.75, 3.15);
+      ship.visible = ks > 0 && ks < 1;
+      if (ship.visible) {
+        const q = camera.quaternion, right = new THREE.Vector3(1, 0, 0).applyQuaternion(q), up = new THREE.Vector3(0, 1, 0).applyQuaternion(q), fw = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+        const x = L(-8.6, 8.6, E.sine(ks)), y = L(1.4, -0.4, ks), z = L(12.5, 10.5, Math.sin(Math.PI * ks));
+        ship.position.copy(camera.position).addScaledVector(right, x).addScaledVector(up, y).addScaledVector(fw, z);
+        ship.quaternion.copy(q).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(deg(L(8, -6, ks)), deg(L(-18, 14, ks)), deg(L(-14, 6, ks)))));
+        shipMat.uniforms.sweep.value = L(-0.3, 1.5, ks);
+      }
+      halo.material.uniforms.strength.value = 1.5; limb.material.uniforms.strength.value = 1.25;
+    } else {
+      // D: pulled back, a wide orbit with the Earth's limb low in frame
+      ship.visible = false;
+      const k = E.out(p(t, 11.6, 15));
+      const az = L(-0.22, -0.12, k), el = L(0.2, 0.26, k), dist = L(1320, 1480, E.out(p(t, 11.6, 13.5)));
+      camera.position.set(Math.sin(az) * Math.cos(el) * dist, Math.sin(el) * dist, Math.cos(az) * Math.cos(el) * dist);
+      camera.up.set(0, 1, 0); camera.fov = 36; camera.updateProjectionMatrix();
+      camera.lookAt(0, L(560, 600, k), 0); camera.updateMatrixWorld();
+      setSun(new THREE.Vector3(1.0, 0.18, -0.12)); // off-frame right: warm crescent, no sun disc over the logo
+      earthPivot.rotation.set(0.35, 1.2 + t * 0.012, 0);
+      halo.material.uniforms.strength.value = 1.1; limb.material.uniforms.strength.value = 1.7;
+    }
+    renderer.render(scene, camera);
+  }
+  // camera blur + dim under the copy in B; fade from black into D
+  const blur = L(0, 9, E.io(p(t, 4.3, 5.6)));
+  const dim = L(1, 0.5, E.io(p(t, 4.3, 5.6)));
+  const intoD = p(t, 11.75, 12.45);
+  const grade = 'saturate(1.3) contrast(1.06)';
+  $('gl').style.filter = t < 9 ? (blur > 0.3 ? `${grade} blur(${blur.toFixed(1)}px) brightness(${dim.toFixed(3)})` : grade) : `${grade} brightness(${intoD.toFixed(3)})`;
+
+  // ---------------- motif line: horizon → pulse
+  const line = $('line'), glow = $('lineGlow');
+  if (t > 3.2 && t < 8.2) {
+    const lp = limbPoints();
+    const km = E.io(p(t, 4.35, 5.35));      // arc → flat line
+    const ka = E.out(p(t, 5.05, 5.8));      // pulse amplitude
+    const restY = 1350, scroll = t * 300, period = 360;
+    const N = 260, pts = [];
+    for (let i = 0; i <= N; i++) {
+      const x = -60 + i / N * (W + 120);
+      const u = (((x + scroll) / period) % 1 + 1) % 1;
+      pts.push([x, L(yAt(lp, x), restY - ecg(u) * ka, km)]);
+    }
+    const d = poly(pts);
+    line.setAttribute('d', d); glow.setAttribute('d', d);
+    line.setAttribute('pathLength', '1'); glow.setAttribute('pathLength', '1');
+    const draw = E.io(p(t, 3.25, 3.95));
+    line.style.strokeDasharray = `${draw} 1`; glow.style.strokeDasharray = `${draw} 1`;
+    const o = p(t, 3.25, 3.5) * (1 - p(t, 7.7, 8.1));
+    line.style.opacity = o; glow.style.opacity = 0.55 * o;
+    line.setAttribute('stroke-width', L(4, 6, km).toFixed(1));
+    // the baseline sits above the resting pulse: you are below it
+    const kb = E.out(p(t, 5.5, 6.1)) * (1 - p(t, 7.7, 8.1));
+    const by = restY - 95;
+    $('baseLine').setAttribute('d', `M${L(540, 60, kb)},${by} L${L(540, 1020, kb)},${by}`);
+    $('baseLine').style.opacity = kb; $('baseLabel').setAttribute('y', by - 22); $('baseLabel').style.opacity = kb * p(t, 5.8, 6.2);
+  } else { line.style.opacity = 0; glow.style.opacity = 0; $('baseLine').style.opacity = 0; $('baseLabel').style.opacity = 0; }
+
+  // ---------------- B copy (V1 rhythm: one idea, time to read)
+  S($('bKicker'), bio(t, 5.25, 7.55));
+  S($('bH1'), bio(t, 5.4, 7.6, 0.8, 26, 30));
+  S($('bH2'), bio(t, 5.6, 7.6, 0.8, 26, 30));
+  S($('bSub'), bio(t, 6.0, 7.6));
+
+  // ---------------- C: the real app, full frame, calm
+  if (t > 7.85 && t < 12.3) {
+    app.style.display = 'block';
+    const kin = E.expo(p(t, 7.85, 8.65)), kout = E.io(p(t, 11.75, 12.3));
+    S(app, { o: 1 - kout, y: L(1920, 0, kin), s: L(1, 0.94, kout), b: kout * 14 });
+    app.style.borderRadius = `${L(70, 0, kin).toFixed(1)}px`;
+    const scroll = L(0, 470, E.sine(p(t, 8.85, 10.35)));
+    $('appScroll').style.transform = `translateY(${(-scroll).toFixed(1)}px)`;
+    // a soft copper light passes over the first adapted card (no frames)
+    const sw = $('sweep');
+    sw.style.top = (150 + 267 * 3 * SC - scroll) + 'px'; sw.style.height = (286 * 3 * SC) + 'px';
+    const ksw = p(t, 10.55, 11.45);
+    $('sweepBand').style.transform = `translateX(${L(-480, 1100, E.sine(ksw)).toFixed(1)}px)`;
+    sw.style.opacity = ksw > 0 && ksw < 1 ? 1 : 0;
+    $('appStatus').style.background = statusColor;
+  } else app.style.display = 'none';
+
+  // ---------------- D: orbit → light → star; the logo holds
+  const orbit = $('orbit'), og = $('orbitGlow'), dot = $('dot'), dg = $('dotGlow');
+  if (t > 11.7) {
+    const C = camera.position, tilt = deg(window.TILT ?? 54), RR = window.RR ?? 650, ring = [], N = 240;
+    let cur = [];
+    const pathOf = phi => new THREE.Vector3(Math.cos(phi) * RR, Math.sin(phi) * RR * Math.sin(tilt), Math.sin(phi) * RR * Math.cos(tilt));
+    const hidden = P => { const dv = P.clone().sub(C), len = dv.length(); dv.divideScalar(len); const b = C.dot(dv), c = C.lengthSq() - R * R, disc = b * b - c; if (disc < 0) return false; const t0 = -b - Math.sqrt(disc); return t0 > 0 && t0 < len; };
+    window.__pathOf = pathOf; window.__project = project; window.__hidden = hidden;
+    const kd = E.io(p(t, 12.15, 13.0));
+    for (let i = 0; i <= N; i++) {
+      const P = pathOf(-Math.PI * 0.05 + (i / N) * Math.PI * 2 * kd);
+      if (hidden(P)) { if (cur.length > 1) ring.push(cur); cur = []; continue; }
+      cur.push(project(P));
+    }
+    if (cur.length > 1) ring.push(cur);
+    const d = ring.map(poly).join('');
+    const oo = p(t, 12.1, 12.4) * (1 - 0.65 * p(t, 13.6, 14.2));
+    orbit.setAttribute('d', d); og.setAttribute('d', d); orbit.style.opacity = oo; og.style.opacity = 0.45 * oo;
+    const kt = E.io(p(t, 12.35, 13.25));
+    const P = project(pathOf(L(Math.PI * 0.40, Math.PI * 0.56, kt)));
+    const lift = E.io(p(t, 13.15, 13.7));
+    const x = L(P[0], 540, lift), y = L(P[1], 580, lift);
+    const dO = p(t, 12.35, 12.5) * (1 - p(t, 13.6, 13.75));
+    dot.setAttribute('cx', x); dot.setAttribute('cy', y); dg.setAttribute('cx', x); dg.setAttribute('cy', y);
+    dot.style.opacity = dO; dg.style.opacity = dO; dg.setAttribute('r', L(60, 120, lift));
+    const ks = E.back(p(t, 13.5, 14.05));
+    S($('star'), { o: p(t, 13.5, 13.62), s: cl(ks, 0, 1.2), r: L(-90, 0, E.out(p(t, 13.5, 14.2))) + (t - 13.5) * 6 });
+    S($('eWord'), bio(t, 13.75, 1e9, 0.8, 20, 20));
+    S($('eTag'), bio(t, 13.95, 1e9, 0.8, 26, 30));
+  } else { orbit.style.opacity = 0; og.style.opacity = 0; dot.style.opacity = 0; dg.style.opacity = 0; ['star', 'eWord', 'eTag'].forEach(id => S($(id), { o: 0 })); }
+}
+
+// sample the real status-bar colour from the capture so the overlay matches
+await appImg.decode().catch(() => {});
+try { const cv = document.createElement('canvas'); cv.width = cv.height = 1; const g = cv.getContext('2d'); g.drawImage(appImg, 30, 6, 1, 1, 0, 0, 1, 1); const [r, gg, b] = g.getImageData(0, 0, 1, 1).data; statusColor = `rgb(${r},${gg},${b})`; } catch {}
+await document.fonts.ready;
+$('loading').remove();
+
+// ------------------------------------------------------------------ player
+let t = 0, playing = !EXPORT, last = 0;
+const holder = $('holder'), stage = $('stage'), scrub = $('scrub'), time = $('time'), playBtn = $('play');
+scrub.max = D;
+function fit() {
+  if (EXPORT) { holder.style.width = '1080px'; holder.style.height = '1920px'; return; }
+  const narrow = innerWidth <= 600;
+  const k = Math.min((innerHeight - (narrow ? 70 : 90)) / 1920, (innerWidth - (narrow ? 0 : 32)) / 1080);
+  stage.style.transform = `scale(${k})`; holder.style.width = 1080 * k + 'px'; holder.style.height = 1920 * k + 'px';
+}
+addEventListener('resize', fit); fit();
+const PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+const PLAY = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>';
+function setPlaying(v) { playing = v; playBtn.innerHTML = v ? PAUSE : PLAY; playBtn.setAttribute('aria-label', v ? 'Pause' : 'Play'); last = performance.now(); }
+setPlaying(playing);
+playBtn.onclick = () => setPlaying(!playing);
+holder.onclick = () => setPlaying(!playing);
+scrub.oninput = () => { t = +scrub.value; setPlaying(false); draw(); };
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  if (e.code === 'ArrowRight') { t = Math.min(D, t + (e.shiftKey ? 1 : 1 / 30)); draw(); }
+  if (e.code === 'ArrowLeft') { t = Math.max(0, t - (e.shiftKey ? 1 : 1 / 30)); draw(); }
+});
+function draw() { render(t); scrub.value = t; time.textContent = t.toFixed(2) + 's'; }
+function loop(now) { if (playing) { t += Math.min(0.05, (now - last) / 1000); if (t >= D) t = 0; } last = now; draw(); requestAnimationFrame(loop); }
+window.D = D; window.render = render; window.ready = Promise.resolve(true);
+if (EXPORT) render(0); else requestAnimationFrame(n => { last = n; loop(n); });
+</script>
+</body>
+</html>

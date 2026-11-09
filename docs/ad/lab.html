@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Model Lab</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+// Dev-only: frames each NASA model from a few angles so the ad scenes can be planned. Not part of the video.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const W = 1080, H = 1920;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(r.domElement);
+const loader = new GLTFLoader();
+const draco = new DRACOLoader(); draco.setDecoderPath('./node_modules/three/examples/jsm/libs/draco/gltf/'); loader.setDRACOLoader(draco);
+window.addEventListener('unhandledrejection', e => console.error('REJ', e.reason && (e.reason.message || e.reason)));
+const load = f => new Promise((res, rej) => loader.load(f, g => res(g.scene), undefined, rej));
+const names = ['earth', 'terra', 'emu'];
+const models = await Promise.all(names.map(n => load(`assets/models/${n}.glb`)));
+const info = {};
+const pmrem = new THREE.PMREMGenerator(r); const ENV = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+// panel cells texture
+const cv = document.createElement('canvas'); cv.width = cv.height = 512; const g2 = cv.getContext('2d');
+g2.fillStyle = '#0b1a3a'; g2.fillRect(0, 0, 512, 512); g2.strokeStyle = '#6b7fa8'; g2.lineWidth = 2;
+for (let i = 0; i <= 512; i += 32) { g2.beginPath(); g2.moveTo(i, 0); g2.lineTo(i, 512); g2.stroke(); g2.beginPath(); g2.moveTo(0, i); g2.lineTo(512, i); g2.stroke(); }
+const cells = new THREE.CanvasTexture(cv); cells.wrapS = cells.wrapT = THREE.RepeatWrapping; cells.repeat.set(6, 6); cells.colorSpace = THREE.SRGBColorSpace;
+const matNames = new Set();
+models[1].traverse(o => { if (!o.isMesh) return; const n = o.material.name; matNames.add(n);
+  if (/Gold/.test(n)) o.material = new THREE.MeshStandardMaterial({ color: 0xd9a441, metalness: 1, roughness: 0.28 });
+  else if (/Solar|Side Panels/.test(n)) o.material = new THREE.MeshStandardMaterial({ map: cells, color: 0xffffff, metalness: 0.6, roughness: 0.25 });
+  else o.material = new THREE.MeshStandardMaterial({ color: /Silver|Dish/.test(n) ? 0xd8dde4 : 0x9aa1aa, metalness: 0.8, roughness: 0.35 }); });
+models[2].traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.envMapIntensity = 1; if (/blinn1SG/.test(m.name)) { m.transmission = 0; m.color.set(0x8a6a2a); m.metalness = 1; m.roughness = 0.05; } else { m.transmission = 0; m.roughness = Math.min(m.roughness, 0.8); } matNames.add('emu:' + m.name + ':' + (m.transmission ?? '') + ':' + m.metalness + ':' + m.roughness); }); } });
+console.warn([...matNames].join(' | '));
+const scenes = models.map((m, i) => {
+  const s = new THREE.Scene(); s.environment = ENV;
+  s.add(new THREE.AmbientLight(0xffffff, 0.35));
+  const d = new THREE.DirectionalLight(0xffd2b0, 2.6); d.position.set(3, 2, 4); s.add(d);
+  const d2 = new THREE.DirectionalLight(0x6fa8ff, 1.2); d2.position.set(-4, -1, -2); s.add(d2);
+  const box = new THREE.Box3().setFromObject(m); const c = box.getCenter(new THREE.Vector3()); const sz = box.getSize(new THREE.Vector3());
+  m.position.sub(c); const k = 2 / Math.max(sz.x, sz.y, sz.z); const g = new THREE.Group(); g.add(m); g.scale.setScalar(k); s.add(g);
+  info[names[i]] = { size: sz.toArray().map(v => +v.toFixed(2)), meshes: 0 };
+  m.traverse(o => { if (o.isMesh) info[names[i]].meshes++; });
+  return { s, g };
+});
+const cam = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
+window.D = 1;
+window.render = () => {
+  r.setScissorTest(true); r.setClearColor(0x111111);
+  const views = [[0, 0.3, 4.2], [Math.PI / 2, 0.2, 4.2], [Math.PI, 0.5, 4.2], [-Math.PI / 2, -0.3, 4.2]];
+  const emuViews = [[0, 0.1, 1.2, 0.65], [0.5, 0.1, 0.9, 0.7], [-0.4, 0.05, 0.7, 0.72], [0.15, 0.0, 0.5, 0.72]];
+  scenes.forEach(({ s }, i) => views.forEach(([az, el, dist], j) => {
+    const w = W / 4, h = H / 3, x = j * w, y = H - (i + 1) * h;
+    r.setViewport(x, y, w, h); r.setScissor(x, y, w, h);
+    cam.aspect = w / h; cam.updateProjectionMatrix();
+    let ty = 0; if (i === 2) { [az, el, dist, ty] = emuViews[j]; }
+    cam.position.set(Math.sin(az) * Math.cos(el) * dist, ty + Math.sin(el) * dist, Math.cos(az) * Math.cos(el) * dist); cam.lookAt(0, ty, 0);
+    r.render(s, cam);
+  }));
+};
+window.info = info;
+window.ready = Promise.resolve();
+render(0);
+console.warn(JSON.stringify(info), r.getContext().getParameter(r.getContext().VERSION), r.capabilities.maxTextureSize);
+</script></body></html>

@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Astra · Crew health beyond Earth</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; overflow: hidden; background: #eeedf1; color: #292732; font-family: "Helvetica Neue", Arial, sans-serif; }
+  #stage { position: absolute; top: 50%; left: 50%; width: 1280px; height: 720px; overflow: hidden; isolation: isolate; background: #fcfbfa; }
+  #wash, #models { position: absolute; inset: 0; pointer-events: none; }
+  #wash { background:
+    radial-gradient(ellipse at 12% 90%, #f1b9a3a6, transparent 34%),
+    radial-gradient(ellipse at 77% 101%, #b4c9f5aa, transparent 44%),
+    radial-gradient(ellipse at 44% 107%, #c1b4e7ae, transparent 48%),
+    radial-gradient(ellipse at 98% 83%, #efb5a276, transparent 28%); }
+  #models { width: 100%; height: 100%; }
+  .layer { position: absolute; inset: 0; opacity: 0; }
+  .center { display: grid; place-items: center; }
+  .row { display: inline-flex; align-items: center; gap: .24em; white-space: nowrap; }
+  .headline { font-size: 62px; line-height: 1.04; font-weight: 500; letter-spacing: -.058em; margin: 0; }
+  .star { width: .78em; height: .78em; flex: none; overflow: visible; }
+  .tone { color: #9c573f; background: linear-gradient(110deg, #a1593e, #946280 60%, #5166a1); background-clip: text; color: transparent; }
+  .search {
+    display: flex; align-items: center; gap: 18px; width: 548px; height: 81px; padding: 0 13px 0 28px;
+    border: 1px solid #fff; border-radius: 99px; background: #ffffffec; box-shadow: 0 12px 46px #67678c1c, inset 0 0 0 1px #b3adcb24;
+    font-size: 27px; color: #57525f;
+  }
+  #query { flex: 1; }
+  #send { display: grid; place-items: center; width: 55px; height: 55px; border-radius: 50%; background: #f5f2fa; color: #473c5e; }
+  #send svg { width: 23px; height: 23px; }
+  #focus-ring { position: absolute; width: 68px; height: 68px; left: 839px; top: 326px; border-radius: 50%; border: 2px solid #c6a5da; }
+  #sensors { position: absolute; left: 50%; top: 50%; display: flex; align-items: center; gap: 26px; transform: translate(-50%, -50%); }
+  .sensor { width: 62px; height: 62px; border-radius: 20px; display: grid; place-items: center; }
+  .sensor svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  #baseline .headline { font-size: 51px; }
+  #baseline strong { font-weight: 500; }
+  #palm .headline { font-size: 49px; }
+  #device { position: absolute; inset: 0; text-align: center; }
+  #device h2 { position: absolute; width: 100%; top: 87px; font-size: 56px; }
+  #phone {
+    position: absolute; top: 201px; left: 50%; width: 353px; height: 745px; overflow: hidden;
+    border: 7px solid #27232b; border-radius: 48px; background: #f8f4ed; transform-origin: 50% 10%;
+    box-shadow: 0 0 0 2px #aaa0ad, 0 22px 68px #48426742;
+  }
+  #phone img { display: block; width: 100%; height: auto; }
+  #phone::after { content: ""; position: absolute; inset: 0; pointer-events: none; border: 1px solid #ffffff66; border-radius: 41px; }
+  #wordmark { padding-bottom: 146px; }
+  #wordmark .headline { font-size: 83px; font-weight: 600; }
+  #wordmark p { margin: 13px 0 0; text-align: center; font-size: 23px; letter-spacing: -.02em; color: #635968; }
+  #final-prompt { position: absolute; left: 50%; top: 391px; width: 410px; height: 65px; font-size: 21px; }
+  #final-prompt .star { width: 25px; height: 25px; }
+  #final-prompt .arrow { margin-left: auto; padding-right: 8px; color: #675478; }
+  #replay { position: fixed; right: 16px; bottom: 16px; border: 1px solid #d5c9d0; border-radius: 999px; background: #fcfbfa; color: #292732; padding: 9px 16px; cursor: pointer; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <defs>
+    <linearGradient id="astra-ink" x1="0" y1="1" x2="1" y2="0">
+      <stop stop-color="#687cb7"/><stop offset=".46" stop-color="#ba7392"/><stop offset="1" stop-color="#e6a16a"/>
+    </linearGradient>
+    <path id="astra-star" d="M12 1.5C12.9 8 16 11.1 22.5 12 16 12.9 12.9 16 12 22.5 11.1 16 8 12.9 1.5 12 8 11.1 11.1 8 12 1.5Z"/>
+  </defs>
+</svg>
+<main id="stage" aria-label="Astra. Crew health beyond Earth.">
+  <div id="wash"></div>
+  <canvas id="models" aria-hidden="true"></canvas>
+  <div id="ask" class="layer center">
+    <div class="search">
+      <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><use href="#astra-star" fill="url(#astra-ink)"/></svg>
+      <span id="query">Ask Astra</span>
+      <span id="send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.6 20.3 3.4l-4.7 17.2-4.4-7.5-8.2-2.5Zm8.2 2.5 4.6-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </div>
+    <div id="focus-ring"></div>
+  </div>
+  <div id="meet" class="layer center">
+    <h1 class="headline row"><span id="meet-word">Meet</span><svg class="star" viewBox="0 0 24 24" aria-hidden="true"><use href="#astra-star" fill="url(#astra-ink)"/></svg><span>Astra</span></h1>
+  </div>
+  <div id="promise" class="layer center">
+    <h2 class="headline">Crew health, <span class="tone">beyond Earth.</span></h2>
+  </div>
+  <div id="sources" class="layer">
+    <div id="sensors" aria-hidden="true">
+      <div class="sensor" style="background:#f6e8df;color:#a86549"><svg viewBox="0 0 32 32"><path d="M3 17h7l4-8 5 15 4-7h6"/></svg></div>
+      <div class="sensor" style="background:#eee9f6;color:#8268a0"><svg viewBox="0 0 32 32"><path d="M24 21A10 10 0 0 1 11 7a10 10 0 1 0 13 14Z"/></svg></div>
+      <div class="sensor" style="background:#e8eff9;color:#5a75ab"><svg viewBox="0 0 32 32"><path d="M13 5h6m-5 0v8l-7 11a2 2 0 0 0 2 3h14a2 2 0 0 0 2-3l-7-11V5M11 21h10"/></svg></div>
+    </div>
+    <h2 id="source-line" class="headline row" style="position:absolute;top:50%;left:50%;font-size:51px">
+      <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><use href="#astra-star" fill="url(#astra-ink)"/></svg> All your vitals, together.
+    </h2>
+  </div>
+  <div id="baseline" class="layer center"><h2 class="headline">Know <strong class="tone">your baseline.</strong></h2></div>
+  <div id="palm" class="layer center"><h2 class="headline">In the palm of your hand.</h2></div>
+  <div id="device" class="layer">
+    <h2 class="headline">A plan that <span class="tone">adapts.</span></h2>
+    <div id="phone"><img src="assets/app/plan.png" alt="Astra’s Today’s plan screen"></div>
+  </div>
+  <div id="verb" class="layer center"><h2 class="headline"></h2></div>
+  <div id="wordmark" class="layer center">
+    <div>
+      <h2 class="headline row">Astra<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><use href="#astra-star" fill="url(#astra-ink)"/></svg></h2>
+      <p>Care beyond Earth.</p>
+    </div>
+    <div id="final-prompt" class="search">
+      <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><use href="#astra-star" fill="url(#astra-ink)"/></svg>
+      <span>Ask Astra</span><span class="arrow" aria-hidden="true">↗</span>
+    </div>
+  </div>
+</main>
+<button id="replay" type="button" hidden>Replay</button>
+<script type="importmap">
+  {"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const width = 1280;
+const height = 720;
+const duration = 21;
+const exporting = new URLSearchParams(location.search).has('export');
+const byId = id => document.getElementById(id);
+const stage = byId('stage');
+const canvas = byId('models');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+renderer.setSize(width, height, false);
+renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+const pmrem = new THREE.PMREMGenerator(renderer);
+const room = new RoomEnvironment();
+const environment = pmrem.fromScene(room, 0.04).texture;
+room.dispose();
+pmrem.dispose();
+
+// Terra references two external TGA files. Supply a local solar-cell pattern.
+const cellGrid = document.createElement('canvas');
+cellGrid.width = cellGrid.height = 256;
+const grid = cellGrid.getContext('2d');
+grid.fillStyle = '#435b88';
+grid.fillRect(0, 0, 256, 256);
+grid.strokeStyle = '#a2adc7';
+for (let line = 0; line < 256; line += 8) {
+  grid.beginPath();
+  grid.moveTo(line, 0);
+  grid.lineTo(line, 256);
+  grid.moveTo(0, line);
+  grid.lineTo(256, line);
+  grid.stroke();
+}
+const cells = cellGrid.toDataURL();
+const files = new THREE.LoadingManager();
+files.setURLModifier(url => url.toLowerCase().endsWith('.tga') ? cells : url);
+const draco = new DRACOLoader().setDecoderPath('./node_modules/three/examples/jsm/libs/draco/gltf/');
+const loader = new GLTFLoader(files).setDRACOLoader(draco);
+const presets = [
+  { name: 'earth', x: -48, y: -96, size: 485, camera: [-0.24, 0.23, 3.36], rotation: [0.12, 0.77, -0.17] },
+  { name: 'terra', x: 899, y: 377, size: 429, camera: [0.32, 0.33, 3.56], rotation: [0.35, -0.73, -0.29] },
+  { name: 'emu', x: 875, y: -108, size: 469, camera: [0.1, 0.22, 3.39], rotation: [0.06, Math.PI + 0.26, -0.10] },
+];
+const models = await Promise.all(presets.map(async preset => {
+  const { scene: asset } = await loader.loadAsync(`./assets/models/${preset.name}.glb`);
+  asset.traverse(object => {
+    if (!object.isMesh) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (preset.name === 'terra' && material.map) {
+        material.color.set(0xe3ecff);
+        material.metalness = 0.4;
+        material.roughness = 0.36;
+      }
+      if (preset.name === 'emu') {
+        material.transmission = 0;
+        if (material.name.endsWith('blinn1SG')) {
+          material.color.set(0x8d6b36);
+          material.metalness = 0.94;
+          material.roughness = 0.12;
+        }
+      }
+    }
+  });
+  const box = new THREE.Box3().setFromObject(asset);
+  const bounds = box.getSize(new THREE.Vector3());
+  asset.position.sub(box.getCenter(new THREE.Vector3()));
+  const subject = new THREE.Group();
+  subject.add(asset);
+  subject.scale.setScalar(2 / Math.max(bounds.x, bounds.y, bounds.z));
+  subject.rotation.set(...preset.rotation);
+  const scene = new THREE.Scene();
+  scene.environment = environment;
+  scene.environmentIntensity = 0.48;
+  const key = new THREE.DirectionalLight(0xffe2c7, 2.8);
+  key.position.set(-3, 4, 5);
+  const rim = new THREE.DirectionalLight(0xb4caff, 1.9);
+  rim.position.set(4, -1, -3);
+  scene.add(subject, key, rim, new THREE.AmbientLight(0xa5b7e4, 0.7));
+  const camera = new THREE.PerspectiveCamera(37, 1, 0.01, 30);
+  return { ...preset, scene, camera, subject, startingCamera: preset.camera };
+}));
+draco.dispose();
+
+const clamp = value => Math.max(0, Math.min(value, 1));
+function ease(t, from, to) {
+  const x = clamp((t - from) / (to - from));
+  return x * x * (3 - 2 * x);
+}
+function show(t, from, entered, leave, until) {
+  return ease(t, from, entered) * (1 - ease(t, leave, until));
+}
+function layer(id, opacity, transform = '') {
+  const node = byId(id);
+  node.style.opacity = opacity;
+  node.style.transform = transform;
+}
+function resize() {
+  const scale = Math.min(innerWidth / width, innerHeight / height);
+  stage.style.transform = `translate(-50%, -50%) scale(${scale})`;
+}
+window.addEventListener('resize', resize);
+resize();
+
+let modelsDrawn = false;
+function renderModels(t) {
+  const amount = show(t, 7.25, 8.08, 9.92, 10.58);
+  canvas.style.opacity = amount;
+  if (amount === 0 && !modelsDrawn) return;
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, width, height);
+  renderer.clear();
+  modelsDrawn = amount > 0;
+  if (!modelsDrawn) return;
+  renderer.setScissorTest(true);
+  const movement = ease(t, 7.25, 10.5);
+  models.forEach(({ name, x, y, size, scene, camera, subject, rotation, startingCamera }, index) => {
+    const arrival = ease(t, 7.23 + index * .13, 8.22 + index * .13);
+    const horizontal = Math.round(x + (index === 0 ? -78 : 73) * (1 - arrival));
+    const vertical = Math.round(y + (index === 1 ? 82 : -56) * (1 - arrival));
+    renderer.setViewport(horizontal, vertical, size, size);
+    renderer.setScissor(horizontal, vertical, size, size);
+    camera.position.set(startingCamera[0] + movement * (index === 0 ? 0.58 : -0.58), startingCamera[1], startingCamera[2]);
+    camera.lookAt(0, 0, 0);
+    subject.rotation.y = rotation[1] + (name === 'terra' ? 0.42 : 0.10) * movement;
+    renderer.render(scene, camera);
+  });
+}
+
+const beats = [
+  { word: 'Track.', start: 14.3 },
+  { word: 'Understand.', start: 15.27 },
+  { word: 'Act.', start: 16.24 },
+  { word: 'With Astra.', start: 17.21 },
+];
+const sensorIcons = Array.from(document.querySelectorAll('.sensor'));
+const phone = byId('phone');
+const deviceTitle = byId('device').querySelector('h2');
+const verb = byId('verb').querySelector('h2');
+const planImage = phone.querySelector('img');
+await planImage.decode();
+
+window.D = duration;
+window.render = time => {
+  const t = Math.min(Math.max(time, 0), duration);
+  const opening = ease(t, 0, 0.46);
+  const send = ease(t, 1.42, 2.17);
+  layer('ask', show(t, 0, 0.4, 1.74, 2.17),
+    `translate(${-193 * send}px, ${(1 - opening) * 24}px) scale(${0.94 + opening * 0.06 + send * 1.4})`);
+  byId('query').textContent = 'Ask Astra'.slice(0, Math.floor(ease(t, 0.14, 0.89) * 9));
+  const ring = show(t, 1.30, 1.5, 1.59, 1.88);
+  layer('focus-ring', ring, `scale(${0.74 + ease(t, 1.30, 1.88) * 0.68})`);
+
+  layer('meet', show(t, 1.96, 2.38, 3.29, 3.64), `translateY(${10 * (1 - ease(t, 1.96, 2.38))}px)`);
+  byId('meet-word').style.opacity = ease(t, 2.08, 2.44);
+  layer('promise', show(t, 3.42, 3.89, 4.97, 5.29), `scale(${1.035 - 0.035 * ease(t, 3.42, 3.89)})`);
+
+  layer('sources', show(t, 5.04, 5.41, 7.2, 7.56));
+  const merge = ease(t, 5.88, 6.32);
+  sensorIcons.forEach((icon, index) => {
+    const arrival = ease(t, 5.04 + index * 0.09, 5.44 + index * 0.09);
+    icon.style.opacity = arrival * (1 - merge);
+    icon.style.transform = `translate(${(1 - index) * 88 * merge}px, ${(1 - arrival) * 14}px) scale(${0.86 + arrival * 0.14 - merge * 0.3})`;
+  });
+  const sourceLine = ease(t, 6.18, 6.57);
+  layer('source-line', sourceLine, `translate(-50%, calc(-50% + ${(1 - sourceLine) * 12}px))`);
+
+  renderModels(t);
+  layer('baseline', show(t, 7.34, 7.87, 9.96, 10.36));
+  layer('palm', show(t, 10.23, 10.68, 11.53, 11.93));
+
+  layer('device', show(t, 11.57, 12.06, 13.79, 14.35));
+  const rise = ease(t, 11.56, 12.49);
+  const sink = ease(t, 13.57, 14.35);
+  phone.style.transform = `translate(-50%, ${(1 - rise) * 280 + sink * 140}px) perspective(950px) rotateX(${(1 - rise) * 19 - 4}deg)`;
+  deviceTitle.style.transform = `translateY(${(1 - rise) * 18}px)`;
+
+  const current = beats.find(({ start }) => t >= start && t < start + 0.97);
+  if (current) verb.textContent = current.word;
+  layer('verb', current ? show(t, current.start, current.start + 0.19, current.start + 0.69, current.start + 0.96) : 0);
+  layer('wordmark', ease(t, 18.18, 18.83), `translateY(${(1 - ease(t, 18.18, 18.83)) * 12}px)`);
+  const prompt = ease(t, 18.76, 19.43);
+  layer('final-prompt', prompt, `translate(-50%, ${(1 - prompt) * 17}px)`);
+
+  const wash = Math.max(
+    show(t, 0, .56, 1.54, 2.32) * .62,
+    show(t, 7.14, 7.87, 10.22, 10.95) * .87,
+    show(t, 11.53, 12.19, 13.76, 14.46) * .79,
+    ease(t, 18.09, 19.36) * .52,
+  );
+  layer('wash', wash);
+};
+window.render(0);
+window.ready = true;
+
+if (!exporting) {
+  const replay = byId('replay');
+  function play() {
+    replay.hidden = true;
+    const start = performance.now();
+    const frame = now => {
+      const t = Math.min((now - start) / 1000, duration);
+      window.render(t);
+      if (t < duration) requestAnimationFrame(frame);
+      else replay.hidden = false;
+    };
+    requestAnimationFrame(frame);
+  }
+  replay.addEventListener('click', play);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    window.render(duration);
+    replay.hidden = false;
+  } else play();
+}
+</script>
+</body>
+</html>
