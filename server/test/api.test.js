@@ -56,9 +56,9 @@ test('email code: signup → login', async () => {
   let r = await call('POST', '/api/auth/code', { email, purpose: 'login' });
   assert.equal(r.status, 404);
   r = await call('POST', '/api/auth/code', { email, purpose: 'signup' });
-  assert.equal(r.status, 200); assert.match(r.body.devCode, /^\d{4}$/);
+  assert.equal(r.status, 200); assert.match(r.body.devCode, /^\d{6}$/);
   const code = r.body.devCode;
-  r = await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code: code === '9999' ? '1000' : '9999', profile });
+  r = await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code: code === '999999' ? '100000' : '999999', profile });
   assert.equal(r.status, 400);
   r = await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code, profile: { ...profile, missionYears: 2.3 } });
   assert.equal(r.status, 400);

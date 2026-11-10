@@ -12,7 +12,7 @@ import { shadowSoft } from '@/astra';
 const TABS: Record<string, { icon: any; label: string }> = {
   today: { icon: House, label: 'Home' },
   plan: { icon: Dumbbell, label: 'Training' },
-  assistant: { icon: Sparkles, label: 'Assistant' },
+  assistant: { icon: Sparkles, label: 'Insights' },
   body: { icon: PersonStanding, label: 'Body' },
   profile: { icon: User, label: 'Profile' },
 };

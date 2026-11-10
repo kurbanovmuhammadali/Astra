@@ -106,6 +106,31 @@ export const METRICS = {
     space: 'Prescribed exercise is the main protection against bone, muscle and heart deconditioning.',
     how: 'Logged automatically from WHOOP workouts or by completing plan tasks.',
   },
+  // ---- blood counts (real data: NASA OSDR Inspiration4, OSD-569). Green = the reference range printed in that dataset's lab report.
+  hgb: {
+    clinical: true, label: 'Hemoglobin', unit: 'g/dL', system: 'immune', source: 'Lab', range: { kind: 'abs', green: [11.7, 17.1], amber: [10.5, 18.0] },
+    what: 'The oxygen-carrying protein in red blood cells, from a complete blood count (CBC).',
+    space: 'Astronauts destroy more red blood cells in flight ("space anemia"). Tracking haemoglobin against your own pre-flight baseline shows it early.',
+    how: 'Venous blood draw, analysed on board or by a clinical lab. Compare with your own pre-flight values.',
+  },
+  wbc: {
+    clinical: true, label: 'White blood cells', unit: '10³/µL', system: 'immune', source: 'Lab', range: { kind: 'abs', green: [3.8, 10.8], amber: [3.0, 12.5] },
+    what: 'Total white blood cell count from a CBC — the overall size of the immune-cell population.',
+    space: 'Spaceflight shifts immune-cell counts and function; a high count can flag infection or stress, a low one reduced defences.',
+    how: 'Venous blood draw (CBC).',
+  },
+  lymph: {
+    label: 'Lymphocytes', unit: 'cells/µL', system: 'immune', source: 'Lab', range: { kind: 'abs', green: [850, 3900], amber: [600, 4800] },
+    what: 'Absolute lymphocyte count (T, B and NK cells) from a CBC.',
+    space: 'Lymphocyte numbers and activity change in flight and after return; dips can accompany stress and latent-virus reactivation.',
+    how: 'Venous blood draw (CBC with differential).',
+  },
+  plt: {
+    clinical: true, label: 'Platelets', unit: '10³/µL', system: 'immune', source: 'Lab', range: { kind: 'abs', green: [140, 400], amber: [100, 450] },
+    what: 'Platelet count from a CBC — the cells that start blood clotting.',
+    space: 'Platelet counts are part of every routine astronaut blood panel and are tracked for flight-related shifts.',
+    how: 'Venous blood draw (CBC).',
+  },
 };
 
 export const SYSTEMS = {
@@ -113,7 +138,7 @@ export const SYSTEMS = {
   bones: { label: 'Bones & muscle', metrics: ['ntx', 'vitd', 'strain', 'exercise'], hazard: 'Gravity fields', blurb: 'Without load, bones lose 1–1.5 %/month and muscles atrophy. Exercise and nutrition are the countermeasures.' },
   brain: { label: 'Brain & mood', metrics: ['mood', 'sleep', 'hrv'], hazard: 'Isolation & confinement', blurb: 'Confinement, workload and circadian disruption affect sleep, mood, cognition and crew cohesion.' },
   eyes: { label: 'Eyes (SANS)', metrics: ['co2'], symptoms: ['vision', 'headache'], hazard: 'Gravity fields', blurb: 'Spaceflight-Associated Neuro-ocular Syndrome: fluid shift swells the optic disc and changes vision.' },
-  immune: { label: 'Immune & radiation', metrics: ['temp', 'radiation'], symptoms: ['fever', 'sore_throat', 'rash'], hazard: 'Radiation & closed environment', blurb: 'Immune function is altered in flight; latent viruses can reactivate. Radiation adds cumulative risk.' },
+  immune: { label: 'Immune & radiation', metrics: ['temp', 'radiation', 'wbc', 'lymph', 'hgb', 'plt'], symptoms: ['fever', 'sore_throat', 'rash'], hazard: 'Radiation & closed environment', blurb: 'Immune function is altered in flight; latent viruses can reactivate. Radiation adds cumulative risk.' },
   metabolism: { label: 'Metabolism & nutrition', metrics: ['glucose', 'weight'], hazard: 'Distance from Earth', blurb: 'Limited food variety, under-eating and inactivity change body mass and blood sugar.' },
 };
 
@@ -141,3 +166,12 @@ export const DEFAULT_MISSION_PLAN = [
   { key: 'water', title: 'Hydration', detail: 'Drink pouches', category: 'nutrition', target: 2.5, unit: 'L', xp: 10 },
   { key: 'sleep', title: 'Sleep window', detail: '22:00 – 06:30 GMT', category: 'recovery', target: 8.5, unit: 'h', xp: 20 },
 ];
+
+// ---- evidence layer: attach basis, references and drift parameters to every metric (see references.js)
+import { EVIDENCE } from './references.js';
+for (const [k, m] of Object.entries(METRICS)) {
+  const e = EVIDENCE[k];
+  if (!e) continue;
+  m.evidence = { basis: e.basis, refs: e.refs, note: e.note };
+  if (e.drift) { m.bad = e.drift.bad; m.drift = { minPct: e.drift.minPct }; } // behaviour metrics (strain, exercise) are threshold-only
+}

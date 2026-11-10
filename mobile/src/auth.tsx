@@ -9,6 +9,7 @@ type Ctx = {
   register: (body: Record<string, unknown>) => Promise<void>;
   requestCode: (email: string, purpose: CodePurpose) => Promise<{ devCode?: string }>;
   verifyCode: (email: string, purpose: CodePurpose, code: string, profile?: Record<string, unknown>) => Promise<User>;
+  guest: (dataset?: 'scenario' | 'osdr') => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   setUser: (u: User | null) => void;
@@ -30,8 +31,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const requestCode = (email: string, purpose: CodePurpose) => api<{ devCode?: string }>('/api/auth/code', { body: { email, purpose } });
   const verifyCode = async (email: string, purpose: CodePurpose, code: string, profile?: Record<string, unknown>) =>
     done(await api('/api/auth/code/verify', { body: { email, purpose, code, profile } }));
+  const guest = async (dataset: 'scenario' | 'osdr' = 'scenario') => { await done(await api('/api/auth/guest', { method: 'POST', body: { dataset } })); };
   const logout = async () => { try { await api('/api/auth/logout', { method: 'POST' }); } catch {} await setToken(null); setUser(null); };
 
-  return <AuthCtx.Provider value={{ user, ready, login, register, requestCode, verifyCode, logout, refresh, setUser }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, ready, login, register, requestCode, verifyCode, guest, logout, refresh, setUser }}>{children}</AuthCtx.Provider>;
 }
 export const useAuth = () => useContext(AuthCtx);

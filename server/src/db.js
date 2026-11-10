@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS email_codes (
 // additive migrations for databases created by earlier versions
 const userCols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
 if (!userCols.includes('mission_years')) db.exec('ALTER TABLE users ADD COLUMN mission_years REAL');
+if (!db.prepare('PRAGMA table_info(email_codes)').all().some(c => c.name === 'sent_at')) db.exec('ALTER TABLE email_codes ADD COLUMN sent_at INTEGER');
 
 export const tx = fn => {
   db.exec('BEGIN');

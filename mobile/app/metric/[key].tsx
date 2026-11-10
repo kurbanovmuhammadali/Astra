@@ -53,6 +53,23 @@ export default function MetricDetail() {
             <T size={12} weight="m" color={C.ink3} style={{ letterSpacing: 1, textTransform: 'uppercase' }}>How to measure</T>
             <T size={15} style={{ marginTop: 6 }}>{info.how}</T>
           </Card>
+          {s.early && s.driftNote ? (
+            <Card style={{ marginBottom: 12 }} tint={C.amberTint}>
+              <T size={12} weight="m" color={C.amber} style={{ letterSpacing: 1, textTransform: 'uppercase' }}>Early warning</T>
+              <T size={15} style={{ marginTop: 6 }}>{s.driftNote}</T>
+            </Card>
+          ) : null}
+          {info.evidence ? (
+            <Card style={{ marginBottom: 12 }}>
+              <T size={12} weight="m" color={C.ink3} style={{ letterSpacing: 1, textTransform: 'uppercase' }}>Evidence behind this rule</T>
+              <T size={13} weight="m" style={{ marginTop: 6 }}>{info.evidence.basisLabel}</T>
+              <T size={14} color={C.ink2} style={{ marginTop: 4 }}>{info.evidence.note}</T>
+              {info.evidence.references.map((r: any) => <T key={r.id} size={12} color={C.ink3} style={{ marginTop: 6 }}>[{r.id}] {r.cite}</T>)}
+              <T size={12} color={C.ink3} style={{ marginTop: 8 }}>
+                Confidence in your baseline: {s.confidence?.level ?? '—'} ({s.confidence?.baselineDays ?? 0} baseline readings). Thresholds are defaults; flight-surgeon limits override them.
+              </T>
+            </Card>
+          ) : null}
           <Card>
             <T size={16} weight="m" style={{ marginBottom: 8 }}>Recent readings</T>
             {data.recent.slice(0, 8).map((r: any) => (

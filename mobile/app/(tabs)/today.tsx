@@ -3,13 +3,14 @@ import { Image, Pressable, ScrollView, useWindowDimensions, View } from 'react-n
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Activity, ChevronLeft, ChevronRight, Moon, HeartPulse } from 'lucide-react-native';
+import { Activity, ChevronLeft, ChevronRight, Droplets, Moon, HeartPulse, Shield } from 'lucide-react-native';
 import { useAuth } from '@/auth';
 import { useApi } from '@/useApi';
 import { A } from '@/theme';
 import type { Dashboard, Plan, Snap } from '@/types';
 import { Button, FadeIn, Loading, Notice, T } from '@/ui';
 import { AstraLogo, Floaty, IMG, Pill, RATIO, shadowSoft } from '@/astra';
+import ReplayBar from '@/ReplayBar';
 
 type Integrations = { providers: { key: string; status: string }[] };
 
@@ -47,9 +48,12 @@ export default function Home() {
 
   const m = data.metrics;
   const whoop = integ?.providers.find(p => p.key === 'whoop')?.status === 'connected';
-  const demo = [m.recovery, m.sleep, m.hrv].some(s => s?.source === 'demo');
+  const src = Object.values(m).find(s => s?.source)?.source;
+  const demo = src === 'demo' || src === 'scenario';
+  const osdr = src === 'nasa-osdr';
   const red = data.alerts.filter(a => a.level === 'red');
-  const today = new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  const amber = data.alerts.filter(a => a.level === 'amber').sort((a, b) => Number(!!b.early) - Number(!!a.early)).slice(0, 3);
+  const today = new Date(data.asOf ?? Date.now()).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
   const bodyW = Math.min(W * 0.8, 380);
   const open = plan ? plan.items.filter(t => !t.done).length : null;
 
@@ -81,14 +85,27 @@ export default function Home() {
         </FadeIn>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-          <Tile icon={Activity} label="Recovery" value={m.recovery?.value != null ? `${Math.round(m.recovery.value)}%` : '—'} m={m.recovery} />
-          <Tile icon={Moon} label="Sleep" value={fmtSleep(m.sleep?.value)} m={m.sleep} />
-          <Tile icon={HeartPulse} label="HRV" value={m.hrv?.value != null ? `${Math.round(m.hrv.value)}ms` : '—'} m={m.hrv} />
+          {osdr ? (<>
+            <Tile icon={Droplets} label="Hemoglobin" value={m.hgb?.value != null ? `${m.hgb.value}` : '—'} m={m.hgb} />
+            <Tile icon={Shield} label="WBC" value={m.wbc?.value != null ? `${m.wbc.value}` : '—'} m={m.wbc} />
+            <Tile icon={Activity} label="Lymph" value={m.lymph?.value != null ? `${Math.round(m.lymph.value)}` : '—'} m={m.lymph} />
+          </>) : (<>
+            <Tile icon={Activity} label="Recovery" value={m.recovery?.value != null ? `${Math.round(m.recovery.value)}%` : '—'} m={m.recovery} />
+            <Tile icon={Moon} label="Sleep" value={fmtSleep(m.sleep?.value)} m={m.sleep} />
+            <Tile icon={HeartPulse} label="HRV" value={m.hrv?.value != null ? `${Math.round(m.hrv.value)}ms` : '—'} m={m.hrv} />
+          </>)}
         </View>
+
+        <ReplayBar />
 
         {red.map((a, i) => (
           <View key={i} style={{ marginTop: 12 }}>
             <Notice kind="red" title={a.title} body={a.body} action={a.escalate ? <Button title="Prepare surgeon report" kind="light" onPress={() => router.push('/report')} style={{ height: 44 }} /> : undefined} />
+          </View>
+        ))}
+        {amber.map((a, i) => (
+          <View key={`a${i}`} style={{ marginTop: 12 }}>
+            <Notice kind="amber" title={a.title} body={a.body} />
           </View>
         ))}
 
@@ -110,7 +127,8 @@ export default function Home() {
           </Pressable>
           <Pill title="View plan" onPress={() => router.push('/plan')} style={{ marginTop: 14, height: 50 }} />
         </View>
-        {demo ? <T size={12} color={A.ink3} center style={{ marginTop: 12 }}>Sample data · connect WHOOP in Profile to see yours</T> : null}
+        {osdr ? <T size={12} color={A.ink3} center style={{ marginTop: 12 }}>Real NASA OSDR data (OSD-569, Inspiration4) · calendar dates shifted, day offsets real · pre/post-flight only · not a medical device</T> : null}
+        {demo ? <T size={12} color={A.ink3} center style={{ marginTop: 12 }}>Synthetic demo data · not a medical device · connect WHOOP in Profile to see yours</T> : null}
       </ScrollView>
     </View>
   );

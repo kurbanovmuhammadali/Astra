@@ -1,5 +1,7 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Image, Platform, useWindowDimensions, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, Platform, Pressable, useWindowDimensions, View } from 'react-native';
+import { router } from 'expo-router';
+import { useAuth } from '@/auth';
 import { nav, MotionScreen } from '@/motion';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +16,9 @@ const native = Platform.OS !== 'web';
 export default function Welcome() {
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { guest } = useAuth();
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoErr, setDemoErr] = useState<string | null>(null);
   const a = useRef(new Animated.Value(0)).current;   // title in
   const b = useRef(new Animated.Value(0)).current;   // title up + buttons in
   useEffect(() => {
@@ -52,6 +57,19 @@ export default function Welcome() {
             <View style={{ flex: 1, height: 1, backgroundColor: A.line }} /><T size={13} color={A.ink3}>or</T><View style={{ flex: 1, height: 1, backgroundColor: A.line }} />
           </View>
           <Pill title="Get started" kind="outline" onPress={() => { draft.reset(); nav.push('/name'); }} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Try the demo crew" disabled={demoBusy}
+            onPress={async () => { setDemoBusy(true); setDemoErr(null); try { await guest(); router.replace('/today'); } catch (e: any) { setDemoErr(e.message); } finally { setDemoBusy(false); } }}
+            style={{ marginTop: 16, alignItems: 'center', paddingVertical: 6 }}>
+            <T size={14} weight="m" color={A.copper}>{demoBusy ? 'Preparing the crew…' : 'Try the demo crew →'}</T>
+            <T size={11.5} color={A.ink3} style={{ marginTop: 2 }}>No sign-up · synthetic Mars-transit data</T>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="See real NASA data from Inspiration4" disabled={demoBusy}
+            onPress={async () => { setDemoBusy(true); setDemoErr(null); try { await guest('osdr'); router.replace('/today'); } catch (e: any) { setDemoErr(e.message); } finally { setDemoBusy(false); } }}
+            style={{ marginTop: 6, alignItems: 'center', paddingVertical: 6 }}>
+            <T size={14} weight="m" color={A.copper}>See real NASA data (Inspiration4) →</T>
+            <T size={11.5} color={A.ink3} style={{ marginTop: 2 }}>Actual blood-count results from NASA OSDR</T>
+          </Pressable>
+          {demoErr ? <T size={12} color="#D9583F" center style={{ marginTop: 4 }}>{demoErr}</T> : null}
         </Animated.View>
       </View>
       </MotionScreen>

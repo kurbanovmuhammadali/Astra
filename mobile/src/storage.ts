@@ -14,3 +14,9 @@ export async function setFlag(key: string): Promise<void> {
     else await SecureStore.setItemAsync(`astra.${key}`, '1');
   } catch {}
 }
+export async function clearFlag(key: string): Promise<void> {
+  try {
+    if (Platform.OS === 'web') localStorage.removeItem(`astra.${key}`);
+    else await SecureStore.deleteItemAsync(`astra.${key}`);
+  } catch {}
+}

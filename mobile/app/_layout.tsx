@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, InterTight_400Regular, InterTight_500Medium, InterTight_600SemiBold, InterTight_700Bold } from '@expo-google-fonts/inter-tight';
 import { AuthProvider } from '@/auth';
+import { ReplayProvider } from '@/replay';
 import CookieBanner from '@/CookieBanner';
 import { C } from '@/theme';
 import { DeviceFrame, DeviceInsets, shouldFrame } from '@/DeviceFrame';
@@ -17,6 +18,7 @@ export default function Root() {
     <SafeAreaProvider>
       <DeviceInsets>
       <AuthProvider>
+      <ReplayProvider>
         <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'fade_from_bottom' }}>
           {/* onboarding screens animate themselves (src/motion.tsx), so the native stack transition is off */}
@@ -27,6 +29,7 @@ export default function Root() {
           <Stack.Screen name="log" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         </Stack>
         <CookieBanner />
+      </ReplayProvider>
       </AuthProvider>
       </DeviceInsets>
     </SafeAreaProvider>

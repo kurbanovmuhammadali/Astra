@@ -24,6 +24,7 @@ function TaskRow({ t, onToggle }: { t: Task; onToggle: () => void }) {
         <T size={15} weight="m" color={adaptive ? '#fff' : C.ink} style={t.done ? { textDecorationLine: 'line-through', opacity: 0.6 } : undefined}>{t.title}</T>
         <T size={12} color={adaptive ? 'rgba(255,255,255,0.65)' : C.ink3}>{t.target && t.unit ? `${t.target} ${t.unit} · ` : ''}{t.detail}</T>
         {adaptive && t.reason ? <T size={11} color={C.coral2} style={{ marginTop: 4 }}>Why: {t.reason}</T> : null}
+        {adaptive && t.evidence?.length ? <T size={10.5} color="rgba(255,255,255,0.5)" style={{ marginTop: 2 }}>Evidence: {t.evidence.join(', ')} (see metric screens)</T> : null}
         {t.needsApproval ? <Row gap={4} style={{ marginTop: 4 }}><Lock size={11} color={C.amber} /><T size={11} color={C.amber}>Confirm with flight surgeon first</T></Row> : null}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>

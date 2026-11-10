@@ -1,0 +1,12 @@
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+process.env.DB_FILE = ':memory:';
+const { runValidation, toMarkdown } = await import('../src/health/validation.js');
+const v = runValidation();
+const md = toMarkdown(v);
+const out = resolve(dirname(fileURLToPath(import.meta.url)), '../../docs/VALIDATION.md');
+mkdirSync(dirname(out), { recursive: true });
+writeFileSync(out, md);
+console.log(md);
+console.log('\nwritten to', out);
