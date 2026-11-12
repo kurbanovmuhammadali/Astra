@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Camera, Check, Square } from 'lucide-react-native';
 import { api } from '@/api';
@@ -22,7 +22,8 @@ const EX: { key: Exercise; icon: string }[] = [{ key: 'squat', icon: '🏋️' }
 
 export default function WorkoutScreen() {
   const insets = useSafeAreaInsets();
-  const [ex, setEx] = useState<Exercise>('squat');
+  const { ex: exParam } = useLocalSearchParams<{ ex?: string }>();
+  const [ex, setEx] = useState<Exercise>(exParam === 'pushup' || exParam === 'pullup' ? exParam : 'squat');
   const [mode, setMode] = useState<'idle' | 'loading' | 'countdown' | 'live' | 'done'>('idle');
   const [msg, setMsg] = useState('');
   const [count, setCount] = useState(0);

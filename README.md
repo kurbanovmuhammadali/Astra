@@ -40,6 +40,9 @@ Home → **Training check**. Runs Google MediaPipe Pose Landmarker in the browse
 ## Deploy (Render)
 `render.yaml` defines one Web Service (API + built web app). In Render: New → Blueprint → pick this repo → fill the secrets it asks for (`RESEND_API_KEY`, `MAIL_FROM`, `USDA_API_KEY`, optionally `ANTHROPIC_API_KEY`) → deploy → set `APP_URL` to the service URL and redeploy. The web app is prebuilt in `server/public`; after changing the mobile code run `npm run build:web` in `mobile/` and commit the result. On the free plan the SQLite file is wiped on every restart (the guest demo reseeds itself); add a Render disk mounted at `/opt/render/project/src/server/data` to keep real accounts.
 
+## Planner (Training → Plan my training)
+Choose a goal (prepare for a mission, become an astronaut, or get fitter), the mission's goal, weeks, days per week and level. Without AI you get a safe, progressive plan (about +10% a week, a lighter week every fourth week, camera-checkable squats, push-ups and pull-ups). With AI (explicit opt-in, Gemini or Claude) the model writes the plan and an academic-style review of the mission goal; the review may only cite Astra's reference list, anything else is dropped server-side, and the plan is validated and clamped. No name or email is sent. The result is a plan to discuss with a coach or doctor, not medical advice.
+
 ## Ask Astra (grounded AI helper)
 *Insights tab.* Answers are built from one snapshot of the user's own data plus the cited rules — flagged indicators, baselines, early-drift flags, today's plan changes, evidence ids. Two engines share the same guardrails:
 - **Offline** (default): deterministic, computed on our server, no external call. Includes a ready-to-edit SBAR message for the flight surgeon.

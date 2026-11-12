@@ -54,6 +54,9 @@ function MyTraining() {
   return (
     <Screen>
       <Header title="Training" />
+      <Pressable accessibilityRole="button" accessibilityLabel="Plan my training" onPress={() => router.push('/planner' as any)} style={{ height: 58, borderRadius: 18, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+        <T size={15} weight="m" color="#fff">Plan my training</T>
+      </Pressable>
       <Row gap={10}>{act(Camera, 'Camera workout', '/workout', true)}{act(Plus, 'Log minutes', '/daily')}</Row>
       <T size={18} weight="m" style={{ marginTop: 24, marginBottom: 10 }}>Your sessions</T>
       {!data ? <Loading /> : data.workouts.length === 0 ? <T size={14} color={C.ink3}>No sessions yet.</T> : (

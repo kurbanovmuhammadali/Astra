@@ -20,6 +20,7 @@ import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { searchFoods, addFood, deleteFood, daySummary, setGoal, estimateFromPhoto, getProfile, setProfile } from './food.js';
 import { addWorkout, listWorkouts } from './workouts.js';
 import { goalsFor, saveDaily } from './goals.js';
+import { createPlan, getPlan } from './planner.js';
 import { seedOsdrI4, clearOsdr, osdrReplayMeta, I4 } from './osdr.js';
 
 const DAY_MS = 864e5;
@@ -500,6 +501,11 @@ app.put('/api/profile/data-source', requireAuth, (req, res) => {
   if (req.body?.source !== 'manual') return bad(res, 'Apple Health and WHOOP are set by importing or connecting them.');
   db.prepare("UPDATE users SET data_source='manual' WHERE id=? AND data_source IS NULL").run(req.user.id);
   res.json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
+});
+app.get('/api/planner', requireAuth, (req, res) => res.json({ saved: getPlan(req.user.id), aiAvailable: aiConfigured(), provider: PROVIDER_LABEL[llmProvider()] ?? null }));
+app.post('/api/planner', requireAuth, async (req, res) => {
+  if (req.body?.useAi === true && !rateLimit(`planner:${req.user.id}`, 6, 60 * 60e3)) return bad(res, 'You have made several AI plans this hour. Try again later.', 429);
+  try { res.json(await createPlan(req.user.id, req.body || {})); } catch (e) { foodErr(res, e); }
 });
 app.get('/api/workouts', requireAuth, (req, res) => res.json({ workouts: listWorkouts(req.user.id) }));
 app.post('/api/workouts', requireAuth, (req, res) => { try { addWorkout(req.user.id, dayOf(Date.now()), req.body || {}); res.json({ workouts: listWorkouts(req.user.id) }); } catch (e) { foodErr(res, e); } });
