@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, Pressable, Share, View } from 'react-native';
 import { router } from 'expo-router';
-import { Link as LinkIcon, FileText, Download, Lock, Cookie, LogOut, Trash, ChevronRight, Send, ShieldCheck } from 'lucide-react-native';
+import { Link as LinkIcon, FileText, Download, Lock, Cookie, LogOut, Trash, ChevronRight, Send, ShieldCheck, Utensils } from 'lucide-react-native';
 import { useAuth } from '@/auth';
 import { api, API_URL } from '@/api';
 import { C } from '@/theme';
@@ -55,6 +55,7 @@ export default function Profile() {
         <View style={wide ? { flex: 1 } : { marginTop: 14 }}>
           <Card style={{ paddingVertical: 6 }}>
             <Item icon={LinkIcon} label="Data sources · WHOOP & more" onPress={() => router.push('/integrations')} />
+            <Item icon={Utensils} label="Food & calories" onPress={() => router.push('/food')} />
             <Item icon={Send} label="Flight surgeon report" onPress={() => router.push('/report')} />
             <Item icon={Download} label="Export my data" onPress={exportData} />
           </Card>

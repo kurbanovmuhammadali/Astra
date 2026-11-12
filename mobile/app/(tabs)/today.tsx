@@ -3,7 +3,7 @@ import { Image, Pressable, ScrollView, useWindowDimensions, View } from 'react-n
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Activity, ChevronLeft, ChevronRight, Droplets, Moon, HeartPulse, Shield } from 'lucide-react-native';
+import { Activity, ChevronLeft, ChevronRight, Droplets, Moon, HeartPulse, Shield, Utensils } from 'lucide-react-native';
 import { useAuth } from '@/auth';
 import { useApi } from '@/useApi';
 import { A } from '@/theme';
@@ -73,6 +73,10 @@ export default function Home() {
             <T size={12.5} weight="m" color={A.ink}>{whoop ? 'WHOOP · connected' : 'WHOOP · not connected'}</T>
           </Pressable>
         </View>
+
+        <Pressable accessibilityRole="button" accessibilityLabel="Food and calories" onPress={() => router.push('/food')} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginTop: 14 }}>
+          <Utensils size={15} color={A.copper} /><T size={13} weight="m" color={A.ink}>Log food & calories</T>
+        </Pressable>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 999, padding: 5, marginTop: 14 }}>
           <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', opacity: 0.35 }}><ChevronLeft size={18} color={A.ink} /></View>

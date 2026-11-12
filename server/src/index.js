@@ -16,6 +16,7 @@ import { aiConfigured, buildContext, ask as askAssistant } from './assistant.js'
 import { parseExportXml, normalizeRecords, saveAppleHealth, clearAppleHealth } from './applehealth.js';
 import { mailConfigured, mailProvider, sendMail, verificationEmail, noticeEmail } from './mail.js';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { searchFoods, addFood, deleteFood, daySummary, setGoal } from './food.js';
 import { seedOsdrI4, clearOsdr, osdrReplayMeta, I4 } from './osdr.js';
 
 const DAY_MS = 864e5;
@@ -476,6 +477,16 @@ app.post('/api/integrations/apple-health/batch', requireAuth, (req, res) => {
   res.json({ ok: true, records: used, skipped, days: new Set(rows.map(r => r.day)).size, perMetric });
 });
 app.delete('/api/integrations/apple-health', requireAuth, (req, res) => { clearAppleHealth(req.user.id); res.json({ ok: true }); });
+
+
+// ------------------------------------------------------------------ Food & calories
+const foodDay = req => (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day || req.body?.day || '')) ? String(req.query.day || req.body.day) : dayOf(Date.now()));
+const foodErr = (res, e) => (e.status ? res.status(e.status).json({ error: e.message }) : (console.error(e), res.status(500).json({ error: 'Something went wrong.' })));
+app.get('/api/food', requireAuth, (req, res) => res.json(daySummary(req.user.id, foodDay(req))));
+app.get('/api/food/search', requireAuth, async (req, res) => res.json({ results: await searchFoods(req.query.q) }));
+app.post('/api/food', requireAuth, (req, res) => { try { addFood(req.user.id, foodDay(req), req.body || {}); res.json(daySummary(req.user.id, foodDay(req))); } catch (e) { foodErr(res, e); } });
+app.delete('/api/food/:id', requireAuth, (req, res) => { deleteFood(req.user.id, Number(req.params.id)); res.json(daySummary(req.user.id, foodDay(req))); });
+app.put('/api/food/goal', requireAuth, (req, res) => { try { setGoal(req.user.id, req.body?.kcal, req.body?.protein); res.json(daySummary(req.user.id, foodDay(req))); } catch (e) { foodErr(res, e); } });
 
 // ------------------------------------------------------------------ Ask Astra (grounded helper)
 app.post('/api/assistant', requireAuth, async (req, res) => {
