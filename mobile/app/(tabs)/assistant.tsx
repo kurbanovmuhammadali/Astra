@@ -60,7 +60,7 @@ export default function Insights() {
       <ScrollView ref={scroller} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: 150, paddingHorizontal: 20, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
         <AstraLogo size={16} />
         <T size={28} weight="sb" color={A.ink} style={{ marginTop: 18, letterSpacing: -0.7 }}>Ask Astra</T>
-        <T size={14} color={A.ink2} style={{ marginTop: 6, lineHeight: 20 }}>Answers come from your own numbers and cited spaceflight research — never guesses, never a diagnosis.</T>
+        <T size={14} color={A.ink2} style={{ marginTop: 6, lineHeight: 20 }}>Answers use only your own numbers.</T>
 
         {/* conversation */}
         <View style={{ marginTop: 16, gap: 10 }} onLayout={e => { convY.current = e.nativeEvent.layout.y; }}>
@@ -95,7 +95,7 @@ export default function Insights() {
             <ShieldCheck size={18} color={A.copper} />
             <View style={{ flex: 1 }}>
               <T size={13} weight="m" color={A.ink}>Let Claude phrase answers</T>
-              <T size={11.5} color={A.ink3} style={{ lineHeight: 16 }}>Sends your readings and rule evidence — never your name or email — to Anthropic's Claude. Off: answers are computed on our server.</T>
+              <T size={11.5} color={A.ink3} style={{ lineHeight: 16 }}>Sends your readings, not your name or email, to Anthropic.</T>
             </View>
             <Switch value={aiOn} onValueChange={toggleAi} trackColor={{ true: A.copper, false: A.line }} />
           </View>
@@ -105,8 +105,7 @@ export default function Insights() {
         <T size={18} weight="sb" color={A.ink} style={{ marginTop: 26 }}>Flagged right now</T>
         {flagged.length === 0 ? (
           <View style={[{ backgroundColor: '#fff', borderRadius: 22, padding: 18, marginTop: 10 }, shadowSoft]}>
-            <T size={15} weight="sb" color={A.ink}>Nothing is drifting from your baseline.</T>
-            <T size={13} color={A.ink2} style={{ marginTop: 6, lineHeight: 19 }}>Astra keeps comparing every indicator with your own earliest readings and will explain here as soon as something moves.</T>
+            <T size={15} weight="sb" color={A.ink}>Nothing flagged.</T>
           </View>
         ) : flagged.map(m => {
           const info = cat.metrics[m.key];
@@ -125,7 +124,7 @@ export default function Insights() {
             </Pressable>
           );
         })}
-        <T size={11.5} color={A.ink3} center style={{ marginTop: 22, lineHeight: 16 }}>Astra supports self-monitoring and escalation. It does not diagnose or prescribe and is not a medical device. Contact the flight surgeon for any red flag.</T>
+        <T size={11.5} color={A.ink3} center style={{ marginTop: 22, lineHeight: 16 }}>Not a medical device. It does not diagnose.</T>
       </ScrollView>
 
       {/* composer */}
