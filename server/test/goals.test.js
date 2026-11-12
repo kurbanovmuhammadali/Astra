@@ -78,3 +78,30 @@ test('guest demo is an explicit demo account and keeps its data', async () => {
   assert.equal(user.dataSource, 'demo');
   assert.equal((await call('GET', '/api/goals', null, token)).body.hasData, true);
 });
+
+test('Ask Astra offline: answers the question asked, never claims what it does not have', async () => {
+  const { token } = await signup();
+  const ask = async q => (await call('POST', '/api/assistant', { question: q }, token)).body.answer;
+
+  // no data yet: honest, not "nothing is flagged"
+  assert.match(await ask('why am i sore?'), /don't have any numbers/);
+
+  await call('POST', '/api/daily', { sleep: 5.5, steps: 3000, exercise: 10 }, token);
+
+  // the question from the screenshot must NOT fall into the "today" list
+  const career = await ask('what i need to do to become professional astronout?');
+  assert.doesNotMatch(career, /Today:|Suggested|heel raises/);
+  assert.match(career, /only answer about your own numbers/);
+
+  // "overall, not only today" gets a week summary, not the same list again
+  const overall = await ask('overal not only today');
+  assert.match(overall, /Last 7 days: you tracked goals on 1 day/);
+  assert.match(overall, /Steps: 3,000 of 8,000 steps/);
+  assert.match(overall, /Tip: /);
+
+  const today = await ask('what should i do today?');
+  assert.match(today, /^Today:/m); assert.match(today, /Sleep: 5.5 of 7 h/);
+  assert.doesNotMatch(today, /Also suggested|null|? %/, 'no suggestions built from missing data');
+  assert.match(await ask('hello'), /^Hi!/);
+  assert.match(await ask('Draft a message to the flight surgeon'), /^Draft for the flight surgeon/);
+});
