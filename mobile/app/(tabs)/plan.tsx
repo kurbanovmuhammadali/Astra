@@ -8,6 +8,9 @@ import { C } from '@/theme';
 import type { Dashboard, Plan, Task } from '@/types';
 import { Card, FadeIn, Header, Loading, Notice, RingProgress, Row, Screen, T, useWide } from '@/ui';
 import { Platform } from 'react-native';
+import { router } from 'expo-router';
+import { Camera, Plus } from 'lucide-react-native';
+import { useAuth } from '@/auth';
 
 const ICON: Record<string, any> = { treadmill: Footprints, ared: Dumbbell, cevis: Bike, vitd: Pill, water: GlassWater, sleep: BedDouble, bp: HeartPulse, checkin: Activity };
 
@@ -37,7 +40,42 @@ function TaskRow({ t, onToggle }: { t: Task; onToggle: () => void }) {
   );
 }
 
+type Session = { id: number; day: string; exercise: string; reps: number; valid_reps: number; seconds: number; kcal: number };
+const NAME: Record<string, string> = { squat: 'Squats', pushup: 'Push-ups', pullup: 'Pull-ups' };
+
+/** Real accounts: only what the person actually did. The fixed astronaut routine below is kept for the demo crew. */
+function MyTraining() {
+  const { data } = useApi<{ workouts: Session[] }>('/api/workouts');
+  const act = (Icon: any, title: string, to: string, primary?: boolean) => (
+    <Pressable accessibilityRole="button" onPress={() => router.push(to as any)} style={{ flex: 1, height: 54, borderRadius: 18, backgroundColor: primary ? C.coral : '#fff', flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
+      <Icon size={18} color={primary ? '#fff' : C.ink} /><T size={14} weight="m" color={primary ? '#fff' : C.ink}>{title}</T>
+    </Pressable>
+  );
+  return (
+    <Screen>
+      <Header title="Training" />
+      <Row gap={10}>{act(Camera, 'Camera workout', '/workout', true)}{act(Plus, 'Log minutes', '/daily')}</Row>
+      <T size={18} weight="m" style={{ marginTop: 24, marginBottom: 10 }}>Your sessions</T>
+      {!data ? <Loading /> : data.workouts.length === 0 ? <T size={14} color={C.ink3}>No sessions yet.</T> : (
+        <Card>
+          {data.workouts.slice(0, 12).map(w => (
+            <Row key={w.id} style={{ paddingVertical: 8, justifyContent: 'space-between' }}>
+              <View><T size={15} weight="m">{NAME[w.exercise] ?? w.exercise}</T><T size={12} color={C.ink3}>{w.day} · {w.seconds} s · ≈{w.kcal} kcal</T></View>
+              <T size={15} weight="m">{w.valid_reps}/{w.reps}</T>
+            </Row>
+          ))}
+        </Card>
+      )}
+    </Screen>
+  );
+}
+
 export default function PlanScreen() {
+  const { user } = useAuth();
+  return user?.dataSource === 'demo' ? <MissionPlan /> : <MyTraining />;
+}
+
+function MissionPlan() {
   const { data, setData } = useApi<Plan>('/api/plan');
   const { data: dash, reload } = useApi<Dashboard>('/api/dashboard');
   const [err, setErr] = useState<string | null>(null);

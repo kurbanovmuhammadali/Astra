@@ -45,6 +45,7 @@ export default function TabsLayout() {
   const { user, ready } = useAuth();
   if (!ready) return <Loading />;
   if (!user) return <Redirect href="/welcome" />;
+  if (!user.dataSource) return <Redirect href="/connect" />;   // required: say where your numbers come from
   return (
     <Tabs tabBar={p => <TabBar {...p} />} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: A.sand } }}>
       <Tabs.Screen name="today" />

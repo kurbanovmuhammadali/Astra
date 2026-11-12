@@ -18,6 +18,7 @@ import { mailConfigured, mailProvider, sendMail, verificationEmail, noticeEmail 
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { searchFoods, addFood, deleteFood, daySummary, setGoal, estimateFromPhoto, getProfile, setProfile } from './food.js';
 import { addWorkout, listWorkouts } from './workouts.js';
+import { goalsFor, saveDaily } from './goals.js';
 import { seedOsdrI4, clearOsdr, osdrReplayMeta, I4 } from './osdr.js';
 
 const DAY_MS = 864e5;
@@ -101,7 +102,6 @@ app.post('/api/auth/register', (req, res) => {
     ['terms', 'privacy', 'health_data'].forEach(k => c.run(id, k, LEGAL_VERSION));
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   });
-  seedDemo(user.id); // every new crew member starts with a clearly-labelled demo dataset
   authResponse(req, res, user);
 });
 
@@ -129,7 +129,8 @@ app.post('/api/auth/guest', (req, res) => {
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   });
   if (dataset === 'osdr') seedOsdrI4(user.id, crew); else seedScenario(user.id);
-  authResponse(req, res, user);
+  db.prepare("UPDATE users SET data_source='demo' WHERE id=?").run(user.id);
+  authResponse(req, res, db.prepare('SELECT * FROM users WHERE id = ?').get(user.id));
 });
 
 // ------------------------------------------------------------------ demo crew account (development only)
@@ -140,6 +141,7 @@ if (!PROD && !db.prepare('SELECT 1 FROM users WHERE email = ?').get(DEMO_EMAIL))
     .run(DEMO_EMAIL, 'Alex Morgan', '!', '1988-01-01', 'astronaut', '2.5-year mission', 'mars', 2.5);
   ['terms', 'privacy', 'health_data'].forEach(k => db.prepare('INSERT INTO consents (user_id, kind, version) VALUES (?,?,?)').run(id, k, LEGAL_VERSION));
   seedDemo(Number(id));
+  db.prepare("UPDATE users SET data_source='demo' WHERE id=?").run(Number(id));
 }
 
 // ------------------------------------------------------------------ passwordless: email + 6-digit code
@@ -230,7 +232,6 @@ app.post('/api/auth/code/verify', (req, res) => {
     if (bodyGiven) setProfile(id, { sex, height_cm: Number(heightCm), weight_kg: Number(weightKg), activity: 'moderate', aim: 'maintain' });   // throws 400 -> whole sign-up rolls back
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   }); } catch (e) { if (e.status) return bad(res, e.message, e.status); throw e; }
-  seedDemo(user.id);
   authResponse(req, res, user);
 });
 
@@ -491,6 +492,14 @@ const foodErr = (res, e) => (e.status ? res.status(e.status).json({ error: e.mes
 app.get('/api/food', requireAuth, (req, res) => res.json(daySummary(req.user.id, foodDay(req))));
 app.get('/api/profile/body', requireAuth, (req, res) => res.json({ profile: getProfile(req.user.id) }));
 app.put('/api/profile/body', requireAuth, (req, res) => { try { res.json({ profile: setProfile(req.user.id, req.body || {}) }); } catch (e) { foodErr(res, e); } });
+const isDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+app.get('/api/goals', requireAuth, (req, res) => res.json(goalsFor(req.user.id, isDay(req.query.day) ? String(req.query.day) : dayOf(Date.now()))));
+app.post('/api/daily', requireAuth, (req, res) => { try { const day = isDay(req.body?.day) ? req.body.day : dayOf(Date.now()); res.json({ saved: saveDaily(req.user.id, day, req.body || {}), goals: goalsFor(req.user.id, day) }); } catch (e) { foodErr(res, e); } });
+app.put('/api/profile/data-source', requireAuth, (req, res) => {
+  if (req.body?.source !== 'manual') return bad(res, 'Apple Health and WHOOP are set by importing or connecting them.');
+  db.prepare("UPDATE users SET data_source='manual' WHERE id=? AND data_source IS NULL").run(req.user.id);
+  res.json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
+});
 app.get('/api/workouts', requireAuth, (req, res) => res.json({ workouts: listWorkouts(req.user.id) }));
 app.post('/api/workouts', requireAuth, (req, res) => { try { addWorkout(req.user.id, dayOf(Date.now()), req.body || {}); res.json({ workouts: listWorkouts(req.user.id) }); } catch (e) { foodErr(res, e); } });
 app.get('/api/food/photo/status', requireAuth, (_req, res) => res.json({ available: aiConfigured() }));

@@ -81,9 +81,16 @@ export function requireAuth(req, res, next) {
   next();
 }
 
+/** How this person's numbers get in: 'apple' / 'whoop' (an import or link exists), 'manual' (chose to type them), 'demo' (synthetic guest), or null = not chosen yet. */
+const dataSourceOf = u => {
+  if (u.data_source) return u.data_source;
+  const p = db.prepare("SELECT provider FROM integrations WHERE user_id=? AND status='connected' AND provider IN ('apple-health','whoop') ORDER BY last_sync DESC LIMIT 1").get(u.id)?.provider;
+  return p === 'apple-health' ? 'apple' : p === 'whoop' ? 'whoop' : null;
+};
+
 export const publicUser = u => ({
   id: u.id, email: u.email, name: u.name, dob: u.dob, role: u.role, mission: u.mission,
-  environment: u.environment, missionYears: u.mission_years ?? null, passwordless: u.password_hash === '!', createdAt: u.created_at,
+  environment: u.environment, missionYears: u.mission_years ?? null, dataSource: dataSourceOf(u), passwordless: u.password_hash === '!', createdAt: u.created_at,
 });
 
 // --- simple in-memory rate limiter -------------------------------------------------

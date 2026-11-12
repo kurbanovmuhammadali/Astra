@@ -118,7 +118,7 @@ export default function WorkoutScreen() {
         <ChevronLeft size={20} color={A.ink} /><T size={14} color={A.ink2}>Back</T>
       </Pressable>
       <T size={28} weight="sb" color={A.ink} style={{ marginTop: 14, letterSpacing: -0.7 }}>Training check</T>
-      <T size={14} color={A.ink2} style={{ marginTop: 4, lineHeight: 20 }}>Your camera tracks your joints, counts reps and checks form. The video stays on this device; only the result is saved.</T>
+      <T size={14} color={A.ink2} style={{ marginTop: 4, lineHeight: 20 }}>Counts reps and checks form. Video stays on this device.</T>
 
       {Platform.OS !== 'web' ? (
         <View style={card}><T size={13} color={A.ink2} style={{ lineHeight: 19 }}>Open Astra in your phone's browser to use the camera. The in-app camera needs the native build.</T></View>
@@ -131,7 +131,7 @@ export default function WorkoutScreen() {
               </Pressable>
             ))}
           </View>
-          <T size={12} color={A.ink3} style={{ marginTop: 8, lineHeight: 17 }}>{cfg.tip} Tracks 13 of the 33 body points: nose, shoulders, elbows, wrists, hips, knees, ankles.</T>
+          <T size={12} color={A.ink3} style={{ marginTop: 8, lineHeight: 17 }}>{cfg.tip}</T>
 
           {/* camera */}
           <D style={{ position: 'relative', marginTop: 12, borderRadius: 22, overflow: 'hidden', background: '#1c1815', aspectRatio: '4 / 3', display: live || mode === 'done' ? 'block' : 'none' }}>
@@ -175,7 +175,7 @@ export default function WorkoutScreen() {
                   </Pressable>
                 </>
               )}
-              <T size={11.5} color={A.ink3} style={{ marginTop: 10, lineHeight: 15 }}>Angles come from a camera and are estimates; calories use a standard activity table (MET). Not a medical assessment.</T>
+              <T size={11.5} color={A.ink3} style={{ marginTop: 10, lineHeight: 15 }}>Estimates only.</T>
             </View>
           ) : null}
 

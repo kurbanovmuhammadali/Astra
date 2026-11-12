@@ -24,6 +24,12 @@ test('consent required', async () => {
 test('register → dashboard → plan → checkin → logout/login → delete', async () => {
   let r = await call('POST', '/api/auth/register', reg);
   assert.equal(r.status, 200, JSON.stringify(r.body)); assert.ok(cookie.startsWith('pg_session='));
+  // a real account starts EMPTY: no auto-filled demo numbers
+  r = await call('GET', '/api/goals'); assert.equal(r.status, 200); assert.equal(r.body.hasData, false);
+  assert.ok(r.body.goals.every(g => g.value === null));
+  assert.equal((await call('GET', '/api/auth/me')).body.user.dataSource, null);
+  // demo data only when the user explicitly asks for it
+  await call('POST', '/api/integrations/demo');
   r = await call('GET', '/api/dashboard'); assert.equal(r.status, 200);
   assert.ok(r.body.readiness > 0 && r.body.readiness <= 100);
   console.log('readiness', r.body.readiness, r.body.systems.map(s => `${s.key}:${s.status}`).join(' '));

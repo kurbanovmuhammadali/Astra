@@ -137,7 +137,6 @@ export default function Food() {
         <ChevronLeft size={20} color={A.ink} /><T size={14} color={A.ink2}>Back</T>
       </Pressable>
       <T size={28} weight="sb" color={A.ink} style={{ marginTop: 14, letterSpacing: -0.7 }}>Food</T>
-      <T size={14} color={A.ink2} style={{ marginTop: 4 }}>Fuel is part of countering muscle and bone loss. Log what you eat; Astra compares it with your goal.</T>
 
       {/* today */}
       <View style={card}>
@@ -151,7 +150,7 @@ export default function Food() {
             <View key={String(l)} style={{ flex: 1 }}><T size={11.5} color={A.ink3}>{l}</T><T size={16} weight="sb" color={A.ink}>{v as number} <T size={11} color={A.ink3}>{u}</T></T></View>
           ))}
         </View>
-        {!s.goal.custom ? <T size={11} color={A.ink3} style={{ marginTop: 10, lineHeight: 15 }}>Default goal ({s.goal.kcal} kcal). Ask the flight surgeon or nutritionist for your own target.</T> : null}
+        {s.goal.from === 'default' ? <T size={11} color={A.ink3} style={{ marginTop: 10 }}>Default goal. Add your body details below for a personal one.</T> : null}
       </View>
 
       {/* body profile: drives the calorie goal */}
@@ -159,7 +158,7 @@ export default function Food() {
         {showForm ? (
           <>
             <T size={15} weight="sb" color={A.ink}>Your body</T>
-            <T size={12} color={A.ink3} style={{ marginTop: 3, lineHeight: 17 }}>Height, weight, sex and activity set how many calories you need. A 180 cm, 90 kg man needs far more than a 165 cm, 50 kg woman.</T>
+            <T size={12} color={A.ink3} style={{ marginTop: 3, lineHeight: 17 }}>Sets your daily calorie goal.</T>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
               <TextInput value={pf.height} onChangeText={v => setPf({ ...pf, height: v })} placeholder="Height cm" keyboardType="numeric" placeholderTextColor={A.ink3} accessibilityLabel="Height in centimetres" style={{ flex: 1, height: 42, borderRadius: 14, backgroundColor: A.sand, paddingHorizontal: 12, fontFamily: F.r, fontSize: 15, color: A.ink }} />
               <TextInput value={pf.weight} onChangeText={v => setPf({ ...pf, weight: v })} placeholder="Weight kg" keyboardType="numeric" placeholderTextColor={A.ink3} accessibilityLabel="Weight in kilograms" style={{ flex: 1, height: 42, borderRadius: 14, backgroundColor: A.sand, paddingHorizontal: 12, fontFamily: F.r, fontSize: 15, color: A.ink }} />
@@ -178,7 +177,7 @@ export default function Food() {
               <Pressable accessibilityRole="button" onPress={() => { const p = s.profile!; setPf({ height: String(p.height_cm), weight: String(p.weight_kg), sex: p.sex, activity: p.activity, aim: p.aim }); setEditing(true); }}><T size={13} weight="m" color={A.copperDeep}>Edit</T></Pressable>
             </View>
             <T size={13} color={A.ink2} style={{ marginTop: 4, lineHeight: 19 }}>{s.profile!.height_cm} cm · {s.profile!.weight_kg} kg · {s.profile!.age} y · resting burn ≈ {s.profile!.bmr} kcal, with activity ≈ {s.profile!.tdee} kcal/day.</T>
-            <T size={11.5} color={A.ink3} style={{ marginTop: 4 }}>Goal {s.goal.kcal} kcal ({s.goal.from === 'custom' ? 'set by you' : s.profile!.aim}). Estimates, about ±10–15%.</T>
+            <T size={11.5} color={A.ink3} style={{ marginTop: 4 }}>Goal {s.goal.kcal} kcal · estimate, ±10–15%</T>
           </>
         )}
       </View>
@@ -189,9 +188,7 @@ export default function Food() {
           <View style={{ flex: 1 }}><T size={11.5} color={A.ink3}>Burned (active)</T><T size={18} weight="sb" color={A.ink}>{s.activity.burned ?? '—'} <T size={11} color={A.ink3}>kcal</T></T></View>
           <View style={{ flex: 1 }}><T size={11.5} color={A.ink3}>Eaten − burned</T><T size={18} weight="sb" color={A.ink}>{s.activity.net ?? '—'}</T></View>
         </View>
-      ) : (
-        <T size={11.5} color={A.ink3} style={{ marginTop: 10, marginLeft: 6, lineHeight: 16 }}>Steps and calories burned appear here after you import your Apple Watch data (Data sources).</T>
-      )}
+      ) : null}
 
       {s.notes.map((n, i) => (
         <View key={i} style={[card, { backgroundColor: n.level === 'amber' ? '#FFF3DD' : '#fff' }]}>
@@ -236,7 +233,7 @@ export default function Food() {
         </View>
       ) : null}
 
-      <View style={card}>
+      <View style={[card, { display: Platform.OS === 'web' && photoOk ? 'flex' : 'none' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Camera size={17} color={A.copper} /><T size={14} weight="sb" color={A.ink}>Estimate from a photo</T></View>
         {Platform.OS !== 'web' ? (
           <T size={12} color={A.ink3} style={{ marginTop: 6, lineHeight: 17 }}>Open Astra in your iPhone's browser to use the camera. In-app camera needs the native build.</T>
@@ -311,7 +308,7 @@ export default function Food() {
           </View>
         ))}
       </View>
-      <T size={11.5} color={A.ink3} center style={{ marginTop: 20, lineHeight: 16 }}>Calorie values come from public food databases and are estimates. Astra supports self-monitoring and does not replace a nutritionist or flight surgeon.</T>
+      <T size={11.5} color={A.ink3} center style={{ marginTop: 20, lineHeight: 16 }}>Calorie values are estimates.</T>
     </ScrollView>
   );
 }
