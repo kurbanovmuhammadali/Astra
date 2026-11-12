@@ -106,6 +106,18 @@ export const METRICS = {
     space: 'Prescribed exercise is the main protection against bone, muscle and heart deconditioning.',
     how: 'Logged automatically from WHOOP workouts or by completing plan tasks.',
   },
+  steps: {
+    label: 'Steps', unit: 'steps', system: 'bones', source: 'Apple Health', range: { kind: 'info' },
+    what: 'Steps counted by your watch or phone today.',
+    space: 'Daily movement load matters for bones, muscles and circulation; on a station the treadmill is the equivalent.',
+    how: 'Automatic from Apple Watch / iPhone via the Health export import.',
+  },
+  activekcal: {
+    label: 'Calories burned', unit: 'kcal', system: 'bones', source: 'Apple Health', range: { kind: 'info' },
+    what: 'Active energy burned through movement and exercise today (not resting metabolism).',
+    space: 'Compare with calories eaten to see whether fuel matches the training load.',
+    how: 'Automatic from Apple Watch via the Health export import.',
+  },
   // ---- blood counts (real data: NASA OSDR Inspiration4, OSD-569). Green = the reference range printed in that dataset's lab report.
   hgb: {
     clinical: true, label: 'Hemoglobin', unit: 'g/dL', system: 'immune', source: 'Lab', range: { kind: 'abs', green: [11.7, 17.1], amber: [10.5, 18.0] },
@@ -135,7 +147,7 @@ export const METRICS = {
 
 export const SYSTEMS = {
   heart: { label: 'Heart & vessels', metrics: ['rhr', 'bp', 'spo2', 'recovery'], hazard: 'Gravity fields', blurb: 'Fluid shifts and less work against gravity decondition the heart; radiation may harm blood vessels long-term.' },
-  bones: { label: 'Bones & muscle', metrics: ['ntx', 'vitd', 'strain', 'exercise'], hazard: 'Gravity fields', blurb: 'Without load, bones lose 1–1.5 %/month and muscles atrophy. Exercise and nutrition are the countermeasures.' },
+  bones: { label: 'Bones & muscle', metrics: ['ntx', 'vitd', 'strain', 'exercise', 'steps', 'activekcal'], hazard: 'Gravity fields', blurb: 'Without load, bones lose 1–1.5 %/month and muscles atrophy. Exercise and nutrition are the countermeasures.' },
   brain: { label: 'Brain & mood', metrics: ['mood', 'sleep', 'hrv'], hazard: 'Isolation & confinement', blurb: 'Confinement, workload and circadian disruption affect sleep, mood, cognition and crew cohesion.' },
   eyes: { label: 'Eyes (SANS)', metrics: ['co2'], symptoms: ['vision', 'headache'], hazard: 'Gravity fields', blurb: 'Spaceflight-Associated Neuro-ocular Syndrome: fluid shift swells the optic disc and changes vision.' },
   immune: { label: 'Immune & radiation', metrics: ['temp', 'radiation', 'wbc', 'lymph', 'hgb', 'plt'], symptoms: ['fever', 'sore_throat', 'rash'], hazard: 'Radiation & closed environment', blurb: 'Immune function is altered in flight; latent viruses can reactivate. Radiation adds cumulative risk.' },

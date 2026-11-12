@@ -24,6 +24,8 @@ const QUANTITY = {
   HKQuantityTypeIdentifierBodyMass: { metric: 'weight', agg: 'last', conv: (v, u) => (/lb/i.test(u) ? v * 0.45359237 : /g$/.test(u) && !/kg/.test(u) ? v / 1000 : v) },
   HKQuantityTypeIdentifierBodyTemperature: { metric: 'temp', agg: 'mean', conv: (v, u) => (/degF|°F/i.test(u) ? (v - 32) * 5 / 9 : v) },
   HKQuantityTypeIdentifierAppleExerciseTime: { metric: 'exercise', agg: 'sum' },
+  HKQuantityTypeIdentifierStepCount: { metric: 'steps', agg: 'sum' },
+  HKQuantityTypeIdentifierActiveEnergyBurned: { metric: 'activekcal', agg: 'sum', conv: (v, u) => (/kJ/i.test(u) ? v / 4.184 : v) },
   HKQuantityTypeIdentifierBloodPressureSystolic: { bp: 'sys' },
   HKQuantityTypeIdentifierBloodPressureDiastolic: { bp: 'dia' },
 };

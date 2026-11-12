@@ -16,7 +16,8 @@ import { aiConfigured, buildContext, ask as askAssistant } from './assistant.js'
 import { parseExportXml, normalizeRecords, saveAppleHealth, clearAppleHealth } from './applehealth.js';
 import { mailConfigured, mailProvider, sendMail, verificationEmail, noticeEmail } from './mail.js';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
-import { searchFoods, addFood, deleteFood, daySummary, setGoal, estimateFromPhoto } from './food.js';
+import { searchFoods, addFood, deleteFood, daySummary, setGoal, estimateFromPhoto, getProfile, setProfile } from './food.js';
+import { addWorkout, listWorkouts } from './workouts.js';
 import { seedOsdrI4, clearOsdr, osdrReplayMeta, I4 } from './osdr.js';
 
 const DAY_MS = 864e5;
@@ -484,6 +485,10 @@ app.delete('/api/integrations/apple-health', requireAuth, (req, res) => { clearA
 const foodDay = req => (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day || req.body?.day || '')) ? String(req.query.day || req.body.day) : dayOf(Date.now()));
 const foodErr = (res, e) => (e.status ? res.status(e.status).json({ error: e.message }) : (console.error(e), res.status(500).json({ error: 'Something went wrong.' })));
 app.get('/api/food', requireAuth, (req, res) => res.json(daySummary(req.user.id, foodDay(req))));
+app.get('/api/profile/body', requireAuth, (req, res) => res.json({ profile: getProfile(req.user.id) }));
+app.put('/api/profile/body', requireAuth, (req, res) => { try { res.json({ profile: setProfile(req.user.id, req.body || {}) }); } catch (e) { foodErr(res, e); } });
+app.get('/api/workouts', requireAuth, (req, res) => res.json({ workouts: listWorkouts(req.user.id) }));
+app.post('/api/workouts', requireAuth, (req, res) => { try { addWorkout(req.user.id, dayOf(Date.now()), req.body || {}); res.json({ workouts: listWorkouts(req.user.id) }); } catch (e) { foodErr(res, e); } });
 app.get('/api/food/photo/status', requireAuth, (_req, res) => res.json({ available: aiConfigured() }));
 app.post('/api/food/photo', requireAuth, async (req, res) => { try { res.json(await estimateFromPhoto(req.body || {})); } catch (e) { foodErr(res, e); } });
 app.get('/api/food/search', requireAuth, async (req, res) => res.json({ results: await searchFoods(req.query.q) }));

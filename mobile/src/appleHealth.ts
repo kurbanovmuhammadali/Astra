@@ -10,6 +10,8 @@ const WANTED = new Set([
   'HKQuantityTypeIdentifierBodyMass',
   'HKQuantityTypeIdentifierBodyTemperature',
   'HKQuantityTypeIdentifierAppleExerciseTime',
+  'HKQuantityTypeIdentifierStepCount',
+  'HKQuantityTypeIdentifierActiveEnergyBurned',
   'HKQuantityTypeIdentifierBloodPressureSystolic',
   'HKQuantityTypeIdentifierBloodPressureDiastolic',
   'HKCategoryTypeIdentifierSleepAnalysis',

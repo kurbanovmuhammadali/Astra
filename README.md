@@ -28,6 +28,13 @@ Home → **Log food & calories** (also Profile). Search built-in staples (incl. 
 
 **Photo estimate** (web / iPhone browser): take or choose a photo; Claude (needs `ANTHROPIC_API_KEY`) lists the foods with approximate grams, kcal and macros, which you review before adding. Sent only after an explicit per-photo agreement, resized to 1024 px, not stored, no name or email included. Expect errors of 20–30%.
 
+**Body profile.** Height, weight, sex, activity level and aim set the daily calorie goal (Mifflin–St Jeor resting burn × activity factor; protein 1.6 g/kg). Estimates, about ±10–15%.
+
+**Steps and calories burned.** Daily steps and active energy are imported from the Apple Health export (Data sources) and shown beside calories eaten.
+
+## Training check (camera)
+Home → **Training check**. Runs Google MediaPipe Pose Landmarker in the browser (33 body points; Astra uses 13: nose, shoulders, elbows, wrists, hips, knees, ankles). Reps are counted from joint angles and form is validated: squats need knee angle ≤ 100° at the bottom, push-ups need elbow ≤ 90° with a level body, pull-ups need elbow ≤ 80° and the chin above the bar. The video never leaves the device; only the result is saved (`POST /api/workouts`). Counting logic is unit-tested on synthetic skeletons (`npm run test:pose` in mobile/); it has not been validated against real people yet.
+
 ## Ask Astra (grounded AI helper)
 *Insights tab.* Answers are built from one snapshot of the user's own data plus the cited rules — flagged indicators, baselines, early-drift flags, today's plan changes, evidence ids. Two engines share the same guardrails:
 - **Offline** (default): deterministic, computed on our server, no external call. Includes a ready-to-edit SBAR message for the flight surgeon.

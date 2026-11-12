@@ -31,7 +31,7 @@ function makeExport(days = 30, now = Date.now()) {
     L.push(rec('HKQuantityTypeIdentifierOxygenSaturation', '%', 0.96 + (wiggle * 0.002), noon, noon));
     L.push(rec('HKQuantityTypeIdentifierBodyMass', 'lb', 176 - (late ? 2 : 0), noon, noon, 'Scale'));
     L.push(rec('HKQuantityTypeIdentifierBodyTemperature', 'degF', 98.2, noon, noon));
-    L.push(rec('HKQuantityTypeIdentifierStepCount', 'count', 4000, noon, noon + 6e4));            // ignored type
+    L.push(rec('HKQuantityTypeIdentifierStepCount', 'count', 4000, noon, noon + 6e4));            // used: daily steps
     L.push(rec('HKQuantityTypeIdentifierBloodPressureSystolic', 'mmHg', 120, noon, noon, 'Cuff'));
     L.push(rec('HKQuantityTypeIdentifierBloodPressureDiastolic', 'mmHg', 78, noon, noon, 'Cuff'));
     // sleep: iPhone InBed 23:00-07:00 (must be ignored), Watch Asleep 23:30-04:00 and 04:00-06:30 (+ an overlapping duplicate)
@@ -54,7 +54,7 @@ test('extraction keeps only the record types Astra uses, and only recent ones', 
   const xml = makeExport(30);
   const all = parseExportXml(xml);
   assert.ok(all.length > 30 * 10);
-  assert.ok(!all.some(r => r.type.includes('StepCount')), 'unrelated types never leave the file');
+  assert.ok(!all.some(r => r.type.includes('BasalEnergy')), 'unrelated types never leave the file');
   const recent = parseExportXml(xml, { sinceMs: Date.now() - 5 * 864e5 });
   assert.ok(recent.length < all.length / 3);
 });
@@ -82,6 +82,7 @@ test('import via API: idempotent, drives the engine, can be removed', async () =
   let r = await call('POST', '/api/integrations/apple-health/batch', { samples, days: 60 }, token);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.ok(r.body.days >= 39 && r.body.perMetric.hrv >= 39);
+  assert.ok(r.body.perMetric.steps >= 39, 'steps imported');
   const first = r.body.perMetric.hrv;
   r = await call('POST', '/api/integrations/apple-health/batch', { samples, days: 60 }, token);   // same export again
   assert.equal(r.body.perMetric.hrv, first);
@@ -95,7 +96,7 @@ test('import via API: idempotent, drives the engine, can be removed', async () =
   assert.equal(r.body.providers.find(p => p.key === 'apple-health').status, 'connected');
 
   assert.equal((await call('POST', '/api/integrations/apple-health/batch', { samples: [] }, token)).status, 400);
-  assert.equal((await call('POST', '/api/integrations/apple-health/batch', { samples: [{ type: 'HKQuantityTypeIdentifierStepCount', value: '1', start: '2026-11-01 10:00:00 +0000', end: '2026-11-01 10:01:00 +0000' }] }, token)).status, 400);
+  assert.equal((await call('POST', '/api/integrations/apple-health/batch', { samples: [{ type: 'HKQuantityTypeIdentifierDietaryWater', value: '1', start: '2026-11-01 10:00:00 +0000', end: '2026-11-01 10:01:00 +0000' }] }, token)).status, 400);
   assert.equal((await call('POST', '/api/integrations/apple-health/batch', { samples })).status, 401);   // auth required
 
   await call('DELETE', '/api/integrations/apple-health', null, token);

@@ -75,3 +75,34 @@ test('photo estimate: consent, validation, parsing, clamping, failure', async ()
   setAiClient(null);
   assert.equal((await call('POST', '/api/food/photo', { image: img, mediaType: 'image/png', consent: true }, t)).status, 503);
 });
+
+test('body profile drives the calorie goal (Mifflin-St Jeor)', async () => {
+  const { energyNeeds } = await import('../src/food.js');
+  // 30 y, male 180 cm 90 kg: BMR = 900 + 1125 - 150 + 5 = 1880 ; moderate x1.55 = 2914
+  const big = energyNeeds({ weight_kg: 90, height_cm: 180, sex: 'male', activity: 'moderate', aim: 'maintain' }, 30);
+  const small = energyNeeds({ weight_kg: 50, height_cm: 165, sex: 'female', activity: 'moderate', aim: 'maintain' }, 30);
+  assert.equal(big.bmr, 1880); assert.equal(big.tdee, 2914); assert.equal(big.protein, 144);
+  assert.ok(big.kcal > small.kcal + 800);
+  const t = (await call('POST', '/api/auth/guest', {})).body.token;
+  assert.equal((await call('GET', '/api/food?day=2026-11-12', null, t)).body.goal.from, 'default');
+  assert.equal((await call('PUT', '/api/profile/body', { height_cm: 20, weight_kg: 90, sex: 'male', activity: 'moderate' }, t)).status, 400);
+  assert.equal((await call('PUT', '/api/profile/body', { height_cm: 180, weight_kg: 90, sex: 'x', activity: 'moderate' }, t)).status, 400);
+  const r = await call('PUT', '/api/profile/body', { height_cm: 180, weight_kg: 90, sex: 'male', activity: 'moderate', aim: 'lose' }, t);
+  assert.equal(r.status, 200);
+  const s = (await call('GET', '/api/food?day=2026-11-12', null, t)).body;
+  assert.equal(s.goal.from, 'profile'); assert.equal(s.goal.kcal, Math.round(r.body.profile.tdee * 0.85 / 10) * 10);
+  assert.equal((await call('PUT', '/api/food/goal', { kcal: 2000, protein: 100 }, t)).body.goal.from, 'custom');
+});
+
+test('workouts: saved with server-side energy estimate, validated, per user', async () => {
+  const a = (await call('POST', '/api/auth/guest', {})).body.token, b = (await call('POST', '/api/auth/guest', {})).body.token;
+  await call('PUT', '/api/profile/body', { height_cm: 180, weight_kg: 90, sex: 'male', activity: 'moderate' }, a);
+  assert.equal((await call('POST', '/api/workouts', { exercise: 'jump', reps: 5, seconds: 30 }, a)).status, 400);
+  assert.equal((await call('POST', '/api/workouts', { exercise: 'squat', reps: 0, seconds: 30 }, a)).status, 400);
+  const r = await call('POST', '/api/workouts', { exercise: 'squat', reps: 20, valid: 18, seconds: 120, avgDepth: 92, issues: ['Not deep enough'] }, a);
+  assert.equal(r.status, 200);
+  const w = r.body.workouts[0];
+  assert.equal(w.form_score, 90); assert.equal(w.kcal, Math.round(5 * 90 * 120 / 3600)); assert.deepEqual(w.issues, ['Not deep enough']);
+  assert.equal((await call('GET', '/api/workouts', null, b)).body.workouts.length, 0);
+  assert.equal((await call('GET', '/api/workouts')).status, 401);
+});

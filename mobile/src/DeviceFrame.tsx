@@ -56,7 +56,7 @@ export function DeviceFrame() {
     <div style={{ position: 'fixed', inset: 0, background: 'radial-gradient(circle at 50% 30%, #F8EEE8, #E9D9CF)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ width: d.w + bezel * 2, height: d.h + bezel * 2, transform: `scale(${scale})`, transformOrigin: 'center', margin: `${((scale - 1) * (d.h + bezel * 2)) / 2}px 0`, flex: 'none' }}>
         <div style={{ position: 'relative', boxSizing: 'border-box', width: '100%', height: '100%', borderRadius: d.island ? 68 : 46, background: '#1a1411', padding: bezel, boxShadow: '0 40px 90px -30px rgba(70,35,15,.55), inset 0 0 0 2px #4a3a31' }}>
-          <iframe key={key} title="Astra on iPhone" src={src} style={{ width: d.w, height: d.h, border: 0, borderRadius: d.island ? 55 : 0, display: 'block', background: '#F8EEE8' }} />
+          <iframe key={key} title="Astra on iPhone" allow="camera; microphone=()" src={src} style={{ width: d.w, height: d.h, border: 0, borderRadius: d.island ? 55 : 0, display: 'block', background: '#F8EEE8' }} />
           {d.island ? <div style={{ position: 'absolute', left: '50%', top: bezel + 11, width: 124, height: 36, marginLeft: -62, borderRadius: 18, background: '#000', pointerEvents: 'none' }} /> : null}
           {d.island ? <div style={{ position: 'absolute', left: '50%', bottom: bezel + 8, width: 140, height: 5, marginLeft: -70, borderRadius: 3, background: 'rgba(0,0,0,.35)', pointerEvents: 'none' }} /> : null}
         </div>

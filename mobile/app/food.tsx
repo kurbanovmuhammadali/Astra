@@ -9,8 +9,10 @@ import { Loading, T } from '@/ui';
 import { shadowSoft } from '@/astra';
 
 type Item = { id: number; meal: string; name: string; grams: number | null; kcal: number; protein: number; carbs: number; fat: number; source: string };
+type Profile = { height_cm: number; weight_kg: number; sex: string; activity: string; aim: string; age: number; bmr: number; tdee: number; kcal: number; protein: number };
 type Summary = {
-  day: string; goal: { kcal: number; protein: number; custom: boolean };
+  profile: Profile | null; activity: { burned: number | null; steps: number | null; net: number | null };
+  day: string; goal: { kcal: number; protein: number; custom: boolean; from: string };
   totals: { kcal: number; protein: number; carbs: number; fat: number }; remaining: number;
   items: Item[]; week: { day: string; kcal: number }[]; notes: { level: string; basis: string; text: string }[];
 };
@@ -68,6 +70,8 @@ export default function Food() {
   const [est, setEst] = useState<Est | null>(null);
   const [reading, setReading] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [pf, setPf] = useState({ height: '', weight: '', sex: 'male', activity: 'moderate', aim: 'maintain' });
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback(() => api<Summary>(`/api/food?day=${day}`).then(setS).catch(e => setErr(e.message)), [day]);
@@ -102,11 +106,28 @@ export default function Food() {
     catch (e: any) { setErr(e.message); }
   };
   const g = Math.max(0, Number(grams) || 0);
+  const saveProfile = async () => {
+    setErr('');
+    try {
+      await api('/api/profile/body', { method: 'PUT', body: { height_cm: Number(pf.height), weight_kg: Number(pf.weight), sex: pf.sex, activity: pf.activity, aim: pf.aim } });
+      setEditing(false); await load();
+    } catch (e: any) { setErr(e.message); }
+  };
   const addPicked = () => picked && add({ name: picked.name, grams: g, kcal: (picked.per100.kcal * g) / 100, protein: (picked.per100.protein * g) / 100, carbs: (picked.per100.carbs * g) / 100, fat: (picked.per100.fat * g) / 100, source: picked.source });
   const remove = async (id: number) => setS(await api<Summary>(`/api/food/${id}?day=${day}`, { method: 'DELETE' }));
 
   if (!s) return <View style={{ flex: 1, backgroundColor: A.sand, justifyContent: 'center' }}><Loading /></View>;
   const over = s.remaining < 0;
+  const showForm = editing || !s.profile;
+  const Pills = ({ opts, value, onPick }: { opts: [string, string][]; value: string; onPick: (v: string) => void }) => (
+    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+      {opts.map(([k, l]) => (
+        <Pressable key={k} accessibilityRole="button" onPress={() => onPick(k)} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: value === k ? A.copper : A.sand }}>
+          <T size={12.5} weight="m" color={value === k ? '#fff' : A.ink}>{l}</T>
+        </Pressable>
+      ))}
+    </View>
+  );
   const maxWeek = Math.max(s.goal.kcal, ...s.week.map(w => w.kcal));
   const card = [{ backgroundColor: '#fff', borderRadius: 22, padding: 16, marginTop: 12 }, shadowSoft] as any;
 
@@ -132,6 +153,45 @@ export default function Food() {
         </View>
         {!s.goal.custom ? <T size={11} color={A.ink3} style={{ marginTop: 10, lineHeight: 15 }}>Default goal ({s.goal.kcal} kcal). Ask the flight surgeon or nutritionist for your own target.</T> : null}
       </View>
+
+      {/* body profile: drives the calorie goal */}
+      <View style={card}>
+        {showForm ? (
+          <>
+            <T size={15} weight="sb" color={A.ink}>Your body</T>
+            <T size={12} color={A.ink3} style={{ marginTop: 3, lineHeight: 17 }}>Height, weight, sex and activity set how many calories you need. A 180 cm, 90 kg man needs far more than a 165 cm, 50 kg woman.</T>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <TextInput value={pf.height} onChangeText={v => setPf({ ...pf, height: v })} placeholder="Height cm" keyboardType="numeric" placeholderTextColor={A.ink3} accessibilityLabel="Height in centimetres" style={{ flex: 1, height: 42, borderRadius: 14, backgroundColor: A.sand, paddingHorizontal: 12, fontFamily: F.r, fontSize: 15, color: A.ink }} />
+              <TextInput value={pf.weight} onChangeText={v => setPf({ ...pf, weight: v })} placeholder="Weight kg" keyboardType="numeric" placeholderTextColor={A.ink3} accessibilityLabel="Weight in kilograms" style={{ flex: 1, height: 42, borderRadius: 14, backgroundColor: A.sand, paddingHorizontal: 12, fontFamily: F.r, fontSize: 15, color: A.ink }} />
+            </View>
+            <Pills opts={[['male', 'Male'], ['female', 'Female'], ['other', 'Other']]} value={pf.sex} onPick={v => setPf({ ...pf, sex: v })} />
+            <Pills opts={[['sedentary', 'Mostly sitting'], ['light', 'Light'], ['moderate', 'Moderate'], ['high', 'Very active']]} value={pf.activity} onPick={v => setPf({ ...pf, activity: v })} />
+            <Pills opts={[['lose', 'Lose weight'], ['maintain', 'Maintain'], ['gain', 'Gain']]} value={pf.aim} onPick={v => setPf({ ...pf, aim: v })} />
+            <Pressable accessibilityRole="button" onPress={saveProfile} style={{ marginTop: 12, height: 42, borderRadius: 999, backgroundColor: A.copper, alignItems: 'center', justifyContent: 'center' }}>
+              <T size={14} weight="m" color="#fff">Save and set my calorie goal</T>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <T size={15} weight="sb" color={A.ink}>Your body</T>
+              <Pressable accessibilityRole="button" onPress={() => { const p = s.profile!; setPf({ height: String(p.height_cm), weight: String(p.weight_kg), sex: p.sex, activity: p.activity, aim: p.aim }); setEditing(true); }}><T size={13} weight="m" color={A.copperDeep}>Edit</T></Pressable>
+            </View>
+            <T size={13} color={A.ink2} style={{ marginTop: 4, lineHeight: 19 }}>{s.profile!.height_cm} cm · {s.profile!.weight_kg} kg · {s.profile!.age} y · resting burn ≈ {s.profile!.bmr} kcal, with activity ≈ {s.profile!.tdee} kcal/day.</T>
+            <T size={11.5} color={A.ink3} style={{ marginTop: 4 }}>Goal {s.goal.kcal} kcal ({s.goal.from === 'custom' ? 'set by you' : s.profile!.aim}). Estimates, about ±10–15%.</T>
+          </>
+        )}
+      </View>
+
+      {s.activity.burned != null || s.activity.steps != null ? (
+        <View style={[card, { flexDirection: 'row', gap: 16 }]}>
+          <View style={{ flex: 1 }}><T size={11.5} color={A.ink3}>Steps today</T><T size={18} weight="sb" color={A.ink}>{s.activity.steps?.toLocaleString() ?? '—'}</T></View>
+          <View style={{ flex: 1 }}><T size={11.5} color={A.ink3}>Burned (active)</T><T size={18} weight="sb" color={A.ink}>{s.activity.burned ?? '—'} <T size={11} color={A.ink3}>kcal</T></T></View>
+          <View style={{ flex: 1 }}><T size={11.5} color={A.ink3}>Eaten − burned</T><T size={18} weight="sb" color={A.ink}>{s.activity.net ?? '—'}</T></View>
+        </View>
+      ) : (
+        <T size={11.5} color={A.ink3} style={{ marginTop: 10, marginLeft: 6, lineHeight: 16 }}>Steps and calories burned appear here after you import your Apple Watch data (Data sources).</T>
+      )}
 
       {s.notes.map((n, i) => (
         <View key={i} style={[card, { backgroundColor: n.level === 'amber' ? '#FFF3DD' : '#fff' }]}>

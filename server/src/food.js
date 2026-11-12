@@ -29,6 +29,47 @@ CREATE TABLE IF NOT EXISTS food_goal (
 );
 `);
 
+db.exec(`
+CREATE TABLE IF NOT EXISTS body_profile (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  height_cm REAL NOT NULL, weight_kg REAL NOT NULL, sex TEXT NOT NULL, activity TEXT NOT NULL, aim TEXT NOT NULL DEFAULT 'maintain'
+);
+`);
+
+/**
+ * Body profile -> daily energy need.
+ * BMR: Mifflin-St Jeor (1990): 10*kg + 6.25*cm - 5*age + 5 (male) / -161 (female); 'other' uses the midpoint (-78).
+ * TDEE = BMR * activity factor (1.2 / 1.375 / 1.55 / 1.725). Aim: lose -15%, gain +10%. Protein goal 1.6 g per kg body weight (a common sports-nutrition target).
+ * These are population estimates (+-10-15%), not medical advice.
+ */
+export const ACTIVITY = { sedentary: 1.2, light: 1.375, moderate: 1.55, high: 1.725 };
+export const AIMS = { lose: 0.85, maintain: 1, gain: 1.1 };
+export const SEXES = ['male', 'female', 'other'];
+const ageOf = dob => { const d = new Date(dob); if (isNaN(d)) return 30; const n = new Date(); let a = n.getFullYear() - d.getFullYear(); if (n < new Date(n.getFullYear(), d.getMonth(), d.getDate())) a--; return Math.min(100, Math.max(15, a)); };
+export function energyNeeds(p, age) {
+  const bmr = 10 * p.weight_kg + 6.25 * p.height_cm - 5 * age + (p.sex === 'male' ? 5 : p.sex === 'female' ? -161 : -78);
+  const tdee = bmr * (ACTIVITY[p.activity] ?? 1.375);
+  return { bmr: Math.round(bmr), tdee: Math.round(tdee), kcal: Math.round((tdee * (AIMS[p.aim] ?? 1)) / 10) * 10, protein: Math.round(p.weight_kg * 1.6) };
+}
+export function getProfile(userId) {
+  const p = db.prepare('SELECT height_cm, weight_kg, sex, activity, aim FROM body_profile WHERE user_id=?').get(userId);
+  if (!p) return null;
+  const u = db.prepare('SELECT dob FROM users WHERE id=?').get(userId);
+  const age = ageOf(u?.dob);
+  return { ...p, age, ...energyNeeds(p, age) };
+}
+export function setProfile(userId, b) {
+  const h = num(b.height_cm, 260), w = num(b.weight_kg, 400);
+  const bad = m => Object.assign(new Error(m), { status: 400 });
+  if (!h || h < 100 || h > 250) throw bad('Height must be 100–250 cm.');
+  if (!w || w < 30 || w > 300) throw bad('Weight must be 30–300 kg.');
+  if (!SEXES.includes(b.sex)) throw bad('Choose male, female or other.');
+  if (!(b.activity in ACTIVITY)) throw bad('Choose an activity level.');
+  const aim = b.aim in AIMS ? b.aim : 'maintain';
+  db.prepare('INSERT INTO body_profile(user_id,height_cm,weight_kg,sex,activity,aim) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET height_cm=excluded.height_cm, weight_kg=excluded.weight_kg, sex=excluded.sex, activity=excluded.activity, aim=excluded.aim').run(userId, h, w, b.sex, b.activity, aim);
+  return getProfile(userId);
+}
+
 export const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'];
 export const DEFAULT_GOAL = { kcal: 2500, protein: 90 };
 
@@ -92,7 +133,9 @@ export async function searchFoods(q) {
 
 export function getGoal(userId) {
   const g = db.prepare('SELECT kcal, protein FROM food_goal WHERE user_id=?').get(userId);
-  return g ? { kcal: g.kcal, protein: g.protein, custom: true } : { ...DEFAULT_GOAL, custom: false };
+  if (g) return { kcal: g.kcal, protein: g.protein, custom: true, from: 'custom' };
+  const p = getProfile(userId);
+  return p ? { kcal: p.kcal, protein: p.protein, custom: false, from: 'profile' } : { ...DEFAULT_GOAL, custom: false, from: 'default' };
 }
 export function setGoal(userId, kcal, protein) {
   const k = num(kcal, 8000), p = num(protein, 500);
@@ -126,7 +169,10 @@ export function daySummary(userId, day) {
   const notes = [];
   if (avg3 != null && avg3 < goal.kcal * 0.75) notes.push({ level: 'amber', basis: 'heuristic', text: `Your last 3 logged days average ${Math.round(avg3)} kcal, under 75% of your ${goal.kcal} kcal goal. Sustained under-eating speeds up muscle and bone loss in flight; raise it with the flight surgeon or nutritionist.` });
   if (tot.protein > 0 && tot.kcal > 1200 && tot.protein < goal.protein * 0.6) notes.push({ level: 'info', basis: 'heuristic', text: `Protein is ${r1(tot.protein)} g of a ${goal.protein} g goal so far today.` });
-  return { day, goal, totals: { kcal: Math.round(tot.kcal), protein: r1(tot.protein), carbs: r1(tot.carbs), fat: r1(tot.fat) }, remaining: Math.round(goal.kcal - tot.kcal), items, week, notes };
+  const burned = Math.round(db.prepare("SELECT value FROM measurements WHERE user_id=? AND metric='activekcal' AND date(recorded_at)=? ORDER BY recorded_at DESC LIMIT 1").get(userId, day)?.value ?? 0) || null;
+  const steps = Math.round(db.prepare("SELECT value FROM measurements WHERE user_id=? AND metric='steps' AND date(recorded_at)=? ORDER BY recorded_at DESC LIMIT 1").get(userId, day)?.value ?? 0) || null;
+  const prof = getProfile(userId);
+  return { day, goal, profile: prof, activity: { burned, steps, net: burned != null ? Math.round(tot.kcal - burned) : null }, totals: { kcal: Math.round(tot.kcal), protein: r1(tot.protein), carbs: r1(tot.carbs), fat: r1(tot.fat) }, remaining: Math.round(goal.kcal - tot.kcal), items, week, notes };
 }
 
 /**
