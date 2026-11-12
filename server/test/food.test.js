@@ -52,3 +52,26 @@ test('search finds built-in staples without network', async () => {
   assert.ok(r.length && r[0].per100.protein > 25 && r[0].source === 'built-in');
   assert.deepEqual(await searchFoods('a'), []);
 });
+
+test('photo estimate: consent, validation, parsing, clamping, failure', async () => {
+  const { setAiClient } = await import('../src/assistant.js');
+  const t = (await call('POST', '/api/auth/guest', {})).body.token;
+  const img = Buffer.alloc(300, 7).toString('base64');
+  const sent = [];
+  setAiClient({ messages: { create: async p => { sent.push(p); return { content: [{ type: 'text', text: 'Sure: {"items":[{"name":"Plov","grams":350,"kcal":665,"protein":20,"carbs":90,"fat":24},{"name":"Bad","grams":1,"kcal":0}],"confidence":"medium","note":"oil unknown"}' }] }; } } });
+  assert.equal((await call('POST', '/api/food/photo', { image: img, mediaType: 'image/jpeg' }, t)).status, 400);           // no consent
+  assert.equal((await call('POST', '/api/food/photo', { image: img, mediaType: 'image/gif', consent: true }, t)).status, 400);
+  assert.equal((await call('POST', '/api/food/photo', { image: 'x', mediaType: 'image/jpeg', consent: true }, t)).status, 400);
+  const r = await call('POST', '/api/food/photo', { image: img, mediaType: 'image/jpeg', consent: true }, t);
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.items.map(i => i.name), ['Plov']);
+  assert.equal(r.body.estimate, true);
+  const content = sent[0].messages[0].content;
+  assert.equal(content[0].type, 'image');
+  assert.ok(!JSON.stringify(sent[0]).includes('@'));                                                  // no e-mail leaks into the request
+  setAiClient({ messages: { create: async () => ({ content: [{ type: 'text', text: 'not json' }] }) } });
+  assert.equal((await call('POST', '/api/food/photo', { image: img, mediaType: 'image/png', consent: true }, t)).status, 502);
+  assert.equal((await call('POST', '/api/food/photo', { image: img, mediaType: 'image/png', consent: true })).status, 401);
+  setAiClient(null);
+  assert.equal((await call('POST', '/api/food/photo', { image: img, mediaType: 'image/png', consent: true }, t)).status, 503);
+});

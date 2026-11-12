@@ -16,7 +16,7 @@ import { aiConfigured, buildContext, ask as askAssistant } from './assistant.js'
 import { parseExportXml, normalizeRecords, saveAppleHealth, clearAppleHealth } from './applehealth.js';
 import { mailConfigured, mailProvider, sendMail, verificationEmail, noticeEmail } from './mail.js';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
-import { searchFoods, addFood, deleteFood, daySummary, setGoal } from './food.js';
+import { searchFoods, addFood, deleteFood, daySummary, setGoal, estimateFromPhoto } from './food.js';
 import { seedOsdrI4, clearOsdr, osdrReplayMeta, I4 } from './osdr.js';
 
 const DAY_MS = 864e5;
@@ -44,7 +44,8 @@ export const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 const jsonSmall = express.json({ limit: '1mb' }), jsonBig = express.json({ limit: '25mb' });
-app.use((req, res, next) => (req.path === '/api/integrations/apple-health/batch' ? jsonBig : jsonSmall)(req, res, next));
+const jsonPhoto = express.json({ limit: '6mb' });
+app.use((req, res, next) => (req.path === '/api/integrations/apple-health/batch' ? jsonBig : req.path === '/api/food/photo' ? jsonPhoto : jsonSmall)(req, res, next));
 
 // security headers + CORS (credentials only for allow-listed origins)
 app.use((req, res, next) => {
@@ -483,6 +484,8 @@ app.delete('/api/integrations/apple-health', requireAuth, (req, res) => { clearA
 const foodDay = req => (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day || req.body?.day || '')) ? String(req.query.day || req.body.day) : dayOf(Date.now()));
 const foodErr = (res, e) => (e.status ? res.status(e.status).json({ error: e.message }) : (console.error(e), res.status(500).json({ error: 'Something went wrong.' })));
 app.get('/api/food', requireAuth, (req, res) => res.json(daySummary(req.user.id, foodDay(req))));
+app.get('/api/food/photo/status', requireAuth, (_req, res) => res.json({ available: aiConfigured() }));
+app.post('/api/food/photo', requireAuth, async (req, res) => { try { res.json(await estimateFromPhoto(req.body || {})); } catch (e) { foodErr(res, e); } });
 app.get('/api/food/search', requireAuth, async (req, res) => res.json({ results: await searchFoods(req.query.q) }));
 app.post('/api/food', requireAuth, (req, res) => { try { addFood(req.user.id, foodDay(req), req.body || {}); res.json(daySummary(req.user.id, foodDay(req))); } catch (e) { foodErr(res, e); } });
 app.delete('/api/food/:id', requireAuth, (req, res) => { deleteFood(req.user.id, Number(req.params.id)); res.json(daySummary(req.user.id, foodDay(req))); });

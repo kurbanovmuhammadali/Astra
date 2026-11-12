@@ -26,6 +26,8 @@ Open the app → **Try the demo crew** (no sign-up) → on *Today*, press **play
 ## Food & calories
 Home → **Log food & calories** (also Profile). Search built-in staples (incl. Central Asian dishes), the USDA database (optional free `USDA_API_KEY`) or Open Food Facts (no key); set grams; log to breakfast / lunch / dinner / snack. Shows kcal and macros against a goal (default 2500 kcal / 90 g protein, editable via `PUT /api/food/goal`), a 7-day chart, and a heuristic note when the last 3 logged days average under 75% of the goal. Only the search words leave the server. Values are estimates.
 
+**Photo estimate** (web / iPhone browser): take or choose a photo; Claude (needs `ANTHROPIC_API_KEY`) lists the foods with approximate grams, kcal and macros, which you review before adding. Sent only after an explicit per-photo agreement, resized to 1024 px, not stored, no name or email included. Expect errors of 20–30%.
+
 ## Ask Astra (grounded AI helper)
 *Insights tab.* Answers are built from one snapshot of the user's own data plus the cited rules — flagged indicators, baselines, early-drift flags, today's plan changes, evidence ids. Two engines share the same guardrails:
 - **Offline** (default): deterministic, computed on our server, no external call. Includes a ready-to-edit SBAR message for the flight surgeon.

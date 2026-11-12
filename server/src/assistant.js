@@ -17,6 +17,12 @@ export const aiConfigured = () => !!process.env.ANTHROPIC_API_KEY;
 let injected = null;
 /** Test hook: inject an object with messages.create(params) -> Message. */
 export const setAiClient = c => { injected = c; };
+export const hasInjectedClient = () => !!injected;
+export async function getAiClient() {
+  if (injected) return injected;
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
 
 export function buildContext(userId, asOfMs = Date.now()) {
   const d = dashboard(userId, asOfMs);

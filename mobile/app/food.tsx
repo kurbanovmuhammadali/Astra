@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Plus, Search, Trash2 } from 'lucide-react-native';
+import { Camera, ChevronLeft, Plus, Search, Trash2 } from 'lucide-react-native';
 import { api } from '@/api';
 import { A, F } from '@/theme';
 import { Loading, T } from '@/ui';
@@ -15,6 +15,30 @@ type Summary = {
   items: Item[]; week: { day: string; kcal: number }[]; notes: { level: string; basis: string; text: string }[];
 };
 type Food = { name: string; per100: { kcal: number; protein: number; carbs: number; fat: number }; source: string };
+
+type Est = { items: { name: string; grams: number; kcal: number; protein: number; carbs: number; fat: number }[]; confidence: string; note: string };
+
+/** Pick/take a photo (web; on an iPhone this opens the camera), shrink it to <=1024 px JPEG so the upload stays small. */
+function pickPhoto(): Promise<string | null> {
+  return new Promise(resolve => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.setAttribute('capture', 'environment');
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      const img = new Image(); const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const k = Math.min(1, 1024 / Math.max(img.width, img.height));
+        const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.8).split(',')[1]);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    };
+    input.click();
+  });
+}
 
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -39,11 +63,29 @@ export default function Food() {
   const [manual, setManual] = useState(false);
   const [m, setM] = useState({ name: '', kcal: '', protein: '' });
   const [err, setErr] = useState('');
+  const [photoOk, setPhotoOk] = useState(false);
+  const [agree, setAgree] = useState(false);
+  const [est, setEst] = useState<Est | null>(null);
+  const [reading, setReading] = useState(false);
   const [searching, setSearching] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback(() => api<Summary>(`/api/food?day=${day}`).then(setS).catch(e => setErr(e.message)), [day]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); api<{ available: boolean }>('/api/food/photo/status').then(r => setPhotoOk(r.available)).catch(() => {}); }, [load]);
+  const takePhoto = async () => {
+    setErr(''); setEst(null);
+    const image = await pickPhoto();
+    if (!image) return;
+    setReading(true);
+    try { setEst(await api<Est>('/api/food/photo', { body: { image, mediaType: 'image/jpeg', consent: true } })); }
+    catch (e: any) { setErr(e.message); } finally { setReading(false); }
+  };
+  const addEstimated = async () => {
+    if (!est) return;
+    let last: Summary | null = null;
+    for (const i of est.items) last = await api<Summary>('/api/food', { body: { day, meal, ...i, source: 'photo-estimate' } });
+    if (last) setS(last); setEst(null); setAgree(false);
+  };
   useEffect(() => {
     clearTimeout(timer.current);
     if (q.trim().length < 2) { setResults([]); return; }
@@ -133,6 +175,39 @@ export default function Food() {
           </View>
         </View>
       ) : null}
+
+      <View style={card}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Camera size={17} color={A.copper} /><T size={14} weight="sb" color={A.ink}>Estimate from a photo</T></View>
+        {Platform.OS !== 'web' ? (
+          <T size={12} color={A.ink3} style={{ marginTop: 6, lineHeight: 17 }}>Open Astra in your iPhone's browser to use the camera. In-app camera needs the native build.</T>
+        ) : !photoOk ? (
+          <T size={12} color={A.ink3} style={{ marginTop: 6, lineHeight: 17 }}>Not available: this server has no Anthropic API key. Search or enter calories by hand instead.</T>
+        ) : (
+          <>
+            <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: agree }} onPress={() => setAgree(v => !v)} style={{ flexDirection: 'row', gap: 10, marginTop: 10, alignItems: 'flex-start' }}>
+              <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: A.copper, backgroundColor: agree ? A.copper : 'transparent' }} />
+              <T size={12} color={A.ink2} style={{ flex: 1, lineHeight: 17 }}>I agree to send this photo to Anthropic's Claude to estimate calories. It is not stored by Astra, and no name or email is sent.</T>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Take or choose a food photo" disabled={!agree || reading} onPress={takePhoto}
+              style={{ marginTop: 10, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: agree && !reading ? A.copper : A.line }}>
+              <T size={14} weight="m" color="#fff">{reading ? 'Estimating…' : 'Take or choose photo'}</T>
+            </Pressable>
+          </>
+        )}
+        {est ? (
+          <View style={{ marginTop: 12 }}>
+            {est.items.length ? est.items.map((i, k) => (
+              <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <View style={{ flex: 1 }}><T size={14} color={A.ink}>{i.name}</T><T size={11.5} color={A.ink3}>≈{i.grams} g · P {i.protein} · C {i.carbs} · F {i.fat}</T></View>
+                <T size={14} weight="m" color={A.ink}>≈{i.kcal}</T>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${i.name}`} hitSlop={10} onPress={() => setEst({ ...est, items: est.items.filter((_, j) => j !== k) })}><Trash2 size={16} color={A.ink3} /></Pressable>
+              </View>
+            )) : <T size={13} color={A.ink2}>No food recognised.</T>}
+            <T size={11.5} color={A.ink3} style={{ marginTop: 8, lineHeight: 16 }}>Confidence: {est.confidence}. This is an estimate, often off by 20–30% (hidden oil, portion size). {est.note}</T>
+            {est.items.length ? <Pressable accessibilityRole="button" onPress={addEstimated} style={{ marginTop: 10, height: 42, borderRadius: 999, backgroundColor: A.copper, alignItems: 'center', justifyContent: 'center' }}><T size={14} weight="m" color="#fff">Add to {meal}</T></Pressable> : null}
+          </View>
+        ) : null}
+      </View>
 
       <Pressable accessibilityRole="button" onPress={() => setManual(v => !v)} style={{ marginTop: 14 }}>
         <T size={13} weight="m" color={A.copperDeep}>{manual ? 'Hide manual entry' : 'Enter calories by hand'}</T>
