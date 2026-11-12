@@ -106,3 +106,18 @@ test('workouts: saved with server-side energy estimate, validated, per user', as
   assert.equal((await call('GET', '/api/workouts', null, b)).body.workouts.length, 0);
   assert.equal((await call('GET', '/api/workouts')).status, 401);
 });
+
+test('sign-up stores sex/height/weight and sets the calorie goal; bad values reject the sign-up', async () => {
+  const email = `body-${Date.now()}@example.com`;
+  const profile = { firstName: 'Ada', lastName: 'Lovelace', age: 30, missionYears: 1, acceptTerms: true };
+  const send = async () => (await call('POST', '/api/auth/code', { email, purpose: 'signup' })).body.devCode;
+  const code = await send();
+  let r = await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code, profile: { ...profile, sex: 'robot', heightCm: 180, weightKg: 90 } });
+  assert.equal(r.status, 400);                                   // rejected ...
+  assert.equal((await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code, profile: { ...profile, sex: 'male', heightCm: 20, weightKg: 90 } })).status, 400);
+  r = await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code, profile: { ...profile, sex: 'male', heightCm: 180, weightKg: 90 } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));            // ... and nothing was half-created, so it still works afterwards
+  const token = r.body.token;
+  const p = (await call('GET', '/api/profile/body', null, token)).body.profile;
+  assert.equal(p.height_cm, 180); assert.equal(p.weight_kg, 90); assert.equal(p.sex, 'male'); assert.ok(p.kcal > 2000);
+});

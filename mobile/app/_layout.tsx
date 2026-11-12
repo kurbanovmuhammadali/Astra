@@ -22,7 +22,7 @@ export default function Root() {
         <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'fade_from_bottom' }}>
           {/* onboarding screens animate themselves (src/motion.tsx), so the native stack transition is off */}
-          {['intro', 'welcome', '(auth)/name', '(auth)/age', '(auth)/mission', '(auth)/email', '(auth)/code', '(auth)/login', '(auth)/done'].map(n => (
+          {['intro', 'welcome', '(auth)/name', '(auth)/age', '(auth)/sex', '(auth)/height', '(auth)/weight', '(auth)/mission', '(auth)/email', '(auth)/code', '(auth)/login', '(auth)/done'].map(n => (
             <Stack.Screen key={n} name={n} options={{ animation: 'none', contentStyle: { backgroundColor: '#F8EEE8' } }} />
           ))}
           <Stack.Screen name="checkin" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />

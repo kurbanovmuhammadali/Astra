@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
 /** Sign-up answers collected across the onboarding screens, sent once with the email code. */
-export type Draft = { firstName: string; lastName: string; acceptTerms: boolean; age: number; missionYears: number; email: string; devCode: string };
-const initial: Draft = { firstName: '', lastName: '', acceptTerms: false, age: 32, missionYears: 1, email: '', devCode: '' };
+export type Draft = { firstName: string; lastName: string; acceptTerms: boolean; age: number; sex: '' | 'male' | 'female' | 'other'; heightCm: number; weightKg: number; missionYears: number; email: string; devCode: string };
+const initial: Draft = { firstName: '', lastName: '', acceptTerms: false, age: 32, sex: '', heightCm: 170, weightKg: 70, missionYears: 1, email: '', devCode: '' };
 
 let state: Draft = { ...initial };
 const subs = new Set<() => void>();

@@ -116,7 +116,7 @@ export const shadowCopper = Platform.select<ViewStyle>({
 
 // ----------------------------------------------------------------------------- form bits
 /** Progress dashes; the current one fills in when the screen appears. */
-export function Steps({ n, of = 5, light }: { n: number; of?: number; light?: boolean }) {
+export function Steps({ n, of = 8, light }: { n: number; of?: number; light?: boolean }) {
   const fill = useEntrance(700, 250);
   const offC = light ? 'rgba(255,255,255,0.35)' : 'rgba(43,30,24,0.14)';
   const onC = light ? '#fff' : A.copper;

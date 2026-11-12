@@ -217,15 +217,19 @@ app.post('/api/auth/code/verify', (req, res) => {
   if (!(y >= 0.5 && y <= 10) || (y * 2) % 1 !== 0) return bad(res, 'Mission length must be 0.5–10 years in half-year steps.');
   if (!acceptTerms) return bad(res, 'You need to accept the Terms and Privacy Policy.');
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return bad(res, 'This email already has an account.', 409);
+  const { sex, heightCm, weightKg } = req.body?.profile ?? {};
+  const bodyGiven = sex != null || heightCm != null || weightKg != null;
   const dob = `${new Date().getUTCFullYear() - a}-01-01`; // only age is collected; store an approximate birth date
-  const user = tx(() => {
+  let user;
+  try { user = tx(() => {
     db.prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?').run(email, purpose);
     const { lastInsertRowid: id } = db.prepare('INSERT INTO users (email, name, password_hash, dob, role, mission, environment, mission_years) VALUES (?,?,?,?,?,?,?,?)')
       .run(email, name.slice(0, 80), '!', dob, 'astronaut', `${y}-year mission`, envForYears(y), y);
     const c = db.prepare('INSERT INTO consents (user_id, kind, version) VALUES (?,?,?)');
     ['terms', 'privacy', 'health_data'].forEach(k => c.run(id, k, LEGAL_VERSION));
+    if (bodyGiven) setProfile(id, { sex, height_cm: Number(heightCm), weight_kg: Number(weightKg), activity: 'moderate', aim: 'maintain' });   // throws 400 -> whole sign-up rolls back
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  });
+  }); } catch (e) { if (e.status) return bad(res, e.message, e.status); throw e; }
   seedDemo(user.id);
   authResponse(req, res, user);
 });

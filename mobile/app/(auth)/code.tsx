@@ -72,7 +72,7 @@ export default function Code() {
   const verify = async (c: string) => {
     setBusy(true); setErr(null);
     try {
-      const profile = purpose === 'signup' ? { firstName: d.firstName, lastName: d.lastName, age: d.age, missionYears: d.missionYears, acceptTerms: d.acceptTerms } : undefined;
+      const profile = purpose === 'signup' ? { firstName: d.firstName, lastName: d.lastName, age: d.age, sex: d.sex, heightCm: d.heightCm, weightKg: d.weightKg, missionYears: d.missionYears, acceptTerms: d.acceptTerms } : undefined;
       await verifyCode(d.email.trim(), purpose, c, profile);
       thud();
       await new Promise<void>(res => Animated.parallel([
@@ -100,7 +100,7 @@ export default function Code() {
   };
 
   return (
-    <FormShell step={purpose === 'signup' ? 5 : undefined} title="Check your email" onBack={() => nav.back(purpose === 'login' ? '/login' : '/email')}
+    <FormShell step={purpose === 'signup' ? 8 : undefined} title="Check your email" onBack={() => nav.back(purpose === 'login' ? '/login' : '/email')}
       onNext={() => verify(code)} nextDisabled={code.length < CODE_LEN} nextLoading={busy} nextLabel="Verify">
       <Animated.View style={{ alignSelf: 'center', marginTop: 18,
         opacity: drop.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] }),

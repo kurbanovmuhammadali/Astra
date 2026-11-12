@@ -190,14 +190,14 @@ export default function Mission() {
 
   return (
     <QuestionScreen
-      step={3}
+      step={6}
       question="How long is your mission?"
       badge={DEST_LABEL[dest]}
       hero={hero}
       ruler={{ min: 0.5, max: 10, step: 0.5, majorEvery: 1, value: d.missionYears, onChange: v => set({ missionYears: v }), onLive: setLive, format: v => `${v} yr` }}
       value={String(d.missionYears)}
       unit={`${d.missionYears === 1 ? 'year' : 'years'} · ${DEST_LABEL[dest]}`}
-      onBack={() => nav.back('/age')}
+      onBack={() => nav.back('/weight')}
       onNext={() => nav.push('/email')}
     />
   );
