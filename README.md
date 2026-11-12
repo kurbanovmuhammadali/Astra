@@ -24,7 +24,7 @@ Open the app → **Try the demo crew** (no sign-up) → on *Today*, press **play
 **Not built:** live HealthKit sync from an iPhone app. That needs a native iOS build (Expo dev client + HealthKit entitlement) and a physical iPhone + Watch to test. `POST /api/integrations/apple-health/batch` is the contract that app would call.
 
 ## Food & calories
-Home → **Log food & calories** (also Profile). Search built-in staples (incl. Central Asian dishes), the USDA database (optional free ) or Open Food Facts (no key); set grams; log to breakfast / lunch / dinner / snack. Shows kcal and macros against a goal (default 2500 kcal / 90 g protein, editable via ), a 7-day chart, and a heuristic note when the last 3 logged days average under 75% of the goal. Only the search words leave the server. Values are estimates.
+Home → **Log food & calories** (also Profile). Search built-in staples (incl. Central Asian dishes), the USDA database (optional free `USDA_API_KEY`) or Open Food Facts (no key); set grams; log to breakfast / lunch / dinner / snack. Shows kcal and macros against a goal (default 2500 kcal / 90 g protein, editable via `PUT /api/food/goal`), a 7-day chart, and a heuristic note when the last 3 logged days average under 75% of the goal. Only the search words leave the server. Values are estimates.
 
 ## Ask Astra (grounded AI helper)
 *Insights tab.* Answers are built from one snapshot of the user's own data plus the cited rules — flagged indicators, baselines, early-drift flags, today's plan changes, evidence ids. Two engines share the same guardrails:
