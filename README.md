@@ -26,6 +26,8 @@ Open the app → **Try the demo crew** (no sign-up) → on *Today*, press **play
 ## Food & calories
 Home → **Log food & calories** (also Profile). Search built-in staples (incl. Central Asian dishes), the USDA database (optional free `USDA_API_KEY`) or Open Food Facts (no key); set grams; log to breakfast / lunch / dinner / snack. Shows kcal and macros against a goal (default 2500 kcal / 90 g protein, editable via `PUT /api/food/goal`), a 7-day chart, and a heuristic note when the last 3 logged days average under 75% of the goal. Only the search words leave the server. Values are estimates.
 
+**AI provider.** Ask Astra and the photo estimate use Google Gemini when `GEMINI_API_KEY` is set (model `GEMINI_MODEL`, default `gemini-flash-latest`), otherwise Anthropic Claude when `ANTHROPIC_API_KEY` is set; `AI_PROVIDER` picks one if both exist. Keys live only in server environment variables; the app never receives them.
+
 **Photo estimate** (web / iPhone browser): take or choose a photo; Claude (needs `ANTHROPIC_API_KEY`) lists the foods with approximate grams, kcal and macros, which you review before adding. Sent only after an explicit per-photo agreement, resized to 1024 px, not stored, no name or email included. Expect errors of 20–30%.
 
 **Body profile.** Height, weight, sex, activity level and aim set the daily calorie goal (Mifflin–St Jeor resting burn × activity factor; protein 1.6 g/kg). Estimates, about ±10–15%.

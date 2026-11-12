@@ -13,6 +13,7 @@ import { REFERENCES, BASIS_LABEL } from './health/references.js';
 import { seedDemo, clearDemo } from './demo.js';
 import { seedScenario, clearScenario, SCENARIO, TRUTH } from './scenario.js';
 import { aiConfigured, buildContext, ask as askAssistant } from './assistant.js';
+import { llmProvider, PROVIDER_LABEL } from './llm.js';
 import { parseExportXml, normalizeRecords, saveAppleHealth, clearAppleHealth } from './applehealth.js';
 import { mailConfigured, mailProvider, sendMail, verificationEmail, noticeEmail } from './mail.js';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
@@ -78,7 +79,7 @@ const authResponse = (req, res, user) => {
 };
 
 // ------------------------------------------------------------------ meta / legal
-app.get('/api/health', (_req, res) => res.json({ ok: true, email: mailProvider(), codeLength: 6, ai: aiConfigured(), whoop: whoopConfigured(), legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, email: mailProvider(), codeLength: 6, ai: aiConfigured(), aiProvider: PROVIDER_LABEL[llmProvider()] ?? null, whoop: whoopConfigured(), legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
 app.get('/api/catalog', (_req, res) => res.json({ metrics: METRICS, systems: SYSTEMS, symptoms: SYMPTOMS, references: REFERENCES }));
 
 // ------------------------------------------------------------------ auth
@@ -502,7 +503,7 @@ app.put('/api/profile/data-source', requireAuth, (req, res) => {
 });
 app.get('/api/workouts', requireAuth, (req, res) => res.json({ workouts: listWorkouts(req.user.id) }));
 app.post('/api/workouts', requireAuth, (req, res) => { try { addWorkout(req.user.id, dayOf(Date.now()), req.body || {}); res.json({ workouts: listWorkouts(req.user.id) }); } catch (e) { foodErr(res, e); } });
-app.get('/api/food/photo/status', requireAuth, (_req, res) => res.json({ available: aiConfigured() }));
+app.get('/api/food/photo/status', requireAuth, (_req, res) => res.json({ available: aiConfigured(), provider: PROVIDER_LABEL[llmProvider()] ?? null }));
 app.post('/api/food/photo', requireAuth, async (req, res) => { try { res.json(await estimateFromPhoto(req.body || {})); } catch (e) { foodErr(res, e); } });
 app.get('/api/food/search', requireAuth, async (req, res) => res.json({ results: await searchFoods(req.query.q) }));
 app.post('/api/food', requireAuth, (req, res) => { try { addFood(req.user.id, foodDay(req), req.body || {}); res.json(daySummary(req.user.id, foodDay(req))); } catch (e) { foodErr(res, e); } });

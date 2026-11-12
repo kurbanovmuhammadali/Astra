@@ -1,6 +1,7 @@
 import { METRICS } from './health/catalog.js';
 import { REFERENCES } from './health/references.js';
 import { dashboard, adaptivePlan } from './health/engine.js';
+import { llmProvider, geminiGenerate, geminiModel } from './llm.js';
 
 /**
  * "Ask Astra" — a grounded helper, not a free-form chatbot.
@@ -13,7 +14,7 @@ import { dashboard, adaptivePlan } from './health/engine.js';
  *    whatever the model says; citations are limited to reference ids present in the snapshot.
  */
 const DEFAULT_MODEL = 'claude-opus-5-5';
-export const aiConfigured = () => !!process.env.ANTHROPIC_API_KEY;
+export const aiConfigured = () => !!llmProvider();
 let injected = null;
 /** Test hook: inject an object with messages.create(params) -> Message. */
 export const setAiClient = c => { injected = c; };
@@ -124,11 +125,16 @@ export async function ask({ question, history = [], ctx, consent }) {
   const offline = () => ({ answer: clean(offlineAnswer(q, ctx), ctx), mode: 'offline' });
   if (!useAi) return offline();
   try {
+    const messages = [...history.slice(-6).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 1000) })), { role: 'user', content: q }];
+    while (messages[0]?.role === 'assistant') messages.shift();
+    if (!injected && llmProvider() === 'gemini') {
+      const { text, blocked } = await geminiGenerate({ system: SYSTEM_PROMPT + JSON.stringify(ctx), messages });
+      if (blocked) return offline();
+      return { answer: clean(text, ctx), mode: 'gemini', model: geminiModel() };
+    }
     let client = injected;
     if (!client) { const { default: Anthropic } = await import('@anthropic-ai/sdk'); client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }); }
     const model = process.env.ASTRA_AI_MODEL || DEFAULT_MODEL;
-    const messages = [...history.slice(-6).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 1000) })), { role: 'user', content: q }];
-    while (messages[0]?.role === 'assistant') messages.shift();
     const msg = await client.messages.create({
       model, max_tokens: 1200,
       output_config: { effort: 'low' },
@@ -140,7 +146,7 @@ export async function ask({ question, history = [], ctx, consent }) {
     if (!text) return offline();
     return { answer: clean(text, ctx), mode: 'claude', model };
   } catch (e) {
-    console.error('[assistant] Claude call failed, answering offline:', e?.status ?? '', e?.message);
+    console.error('[assistant] AI call failed, answering offline:', e?.status ?? '', e?.message);
     return { ...offline(), degraded: true };
   }
 }

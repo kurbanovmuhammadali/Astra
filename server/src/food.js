@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { llmProvider, geminiGenerate } from './llm.js';
 
 /**
  * Food & calorie log.
@@ -186,20 +187,26 @@ Rules: one item per distinct food you can see; grams are your estimate of the vi
 const MEDIA = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export async function estimateFromPhoto({ image, mediaType, consent }) {
-  const { aiConfigured, getAiClient } = await import('./assistant.js');
+  const { aiConfigured, getAiClient, hasInjectedClient } = await import('./assistant.js');
   const err = (status, message) => Object.assign(new Error(message), { status });
-  if (consent !== true) throw err(400, 'Photo estimates send the picture to Anthropic\'s Claude. Please agree first.');
-  if (!aiConfigured() && !(await import('./assistant.js')).hasInjectedClient()) throw err(503, 'Photo estimates are not available: the server has no Anthropic API key.');
+  if (consent !== true) throw err(400, 'Photo estimates send the picture to an AI service (Google Gemini or Anthropic Claude). Please agree first.');
+  if (!aiConfigured() && !hasInjectedClient()) throw err(503, 'Photo estimates are not available: the server has no AI API key.');
   if (!MEDIA.has(mediaType)) throw err(400, 'Use a JPEG, PNG or WebP photo.');
   const data = String(image || '').replace(/^data:[^,]*,/, '');
   if (data.length < 100 || data.length > 5_500_000 || !/^[A-Za-z0-9+/=\s]+$/.test(data)) throw err(400, 'The photo is missing, unreadable or too large.');
   try {
-    const client = await getAiClient();
-    const msg = await client.messages.create({
-      model: process.env.ASTRA_AI_MODEL || 'claude-opus-5-5', max_tokens: 900, output_config: { effort: 'low' },
-      messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mediaType, data } }, { type: 'text', text: PHOTO_PROMPT }] }],
-    });
-    const text = (msg.content ?? []).filter(b => b.type === 'text').map(b => b.text).join('');
+    let text;
+    if (!hasInjectedClient() && llmProvider() === 'gemini') {
+      try { text = (await geminiGenerate({ messages: [{ role: 'user', content: PHOTO_PROMPT }], image: { mediaType, data }, json: true, maxTokens: 900 })).text; }
+      catch (e) { console.error('[food photo] Gemini:', e.message); throw err(502, 'Could not read that photo. Try a clearer, closer picture or add the food by search.'); }
+    } else {
+      const client = await getAiClient();
+      const msg = await client.messages.create({
+        model: process.env.ASTRA_AI_MODEL || 'claude-opus-5-5', max_tokens: 900, output_config: { effort: 'low' },
+        messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mediaType, data } }, { type: 'text', text: PHOTO_PROMPT }] }],
+      });
+      text = (msg.content ?? []).filter(b => b.type === 'text').map(b => b.text).join('');
+    }
     const j = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
     const n = (v, max) => Math.min(max, Math.max(0, Math.round(Number(v) || 0)));
     const items = (Array.isArray(j.items) ? j.items : []).slice(0, 8).map(i => ({ name: String(i.name || 'Food').slice(0, 80), grams: n(i.grams, 3000), kcal: n(i.kcal, 5000), protein: n(i.protein, 300), carbs: n(i.carbs, 600), fat: n(i.fat, 400) })).filter(i => i.kcal > 0);

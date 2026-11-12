@@ -66,6 +66,7 @@ export default function Food() {
   const [m, setM] = useState({ name: '', kcal: '', protein: '' });
   const [err, setErr] = useState('');
   const [photoOk, setPhotoOk] = useState(false);
+  const [aiName, setAiName] = useState('an AI service');
   const [agree, setAgree] = useState(false);
   const [est, setEst] = useState<Est | null>(null);
   const [reading, setReading] = useState(false);
@@ -75,7 +76,7 @@ export default function Food() {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback(() => api<Summary>(`/api/food?day=${day}`).then(setS).catch(e => setErr(e.message)), [day]);
-  useEffect(() => { load(); api<{ available: boolean }>('/api/food/photo/status').then(r => setPhotoOk(r.available)).catch(() => {}); }, [load]);
+  useEffect(() => { load(); api<{ available: boolean; provider?: string | null }>('/api/food/photo/status').then(r => { setPhotoOk(r.available); if (r.provider) setAiName(r.provider); }).catch(() => {}); }, [load]);
   const takePhoto = async () => {
     setErr(''); setEst(null);
     const image = await pickPhoto();
@@ -243,7 +244,7 @@ export default function Food() {
           <>
             <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: agree }} onPress={() => setAgree(v => !v)} style={{ flexDirection: 'row', gap: 10, marginTop: 10, alignItems: 'flex-start' }}>
               <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: A.copper, backgroundColor: agree ? A.copper : 'transparent' }} />
-              <T size={12} color={A.ink2} style={{ flex: 1, lineHeight: 17 }}>I agree to send this photo to Anthropic's Claude to estimate calories. It is not stored by Astra, and no name or email is sent.</T>
+              <T size={12} color={A.ink2} style={{ flex: 1, lineHeight: 17 }}>I agree to send this photo to {aiName} to estimate calories. Astra does not store it, and no name or email is sent.</T>
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Take or choose a food photo" disabled={!agree || reading} onPress={takePhoto}
               style={{ marginTop: 10, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: agree && !reading ? A.copper : A.line }}>

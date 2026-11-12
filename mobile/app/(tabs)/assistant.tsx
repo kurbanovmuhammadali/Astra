@@ -13,7 +13,7 @@ import { useReplay, withAsOf } from '@/replay';
 import { clearFlag, getFlag, setFlag } from '@/storage';
 
 type Catalog = { metrics: Record<string, { space: string; evidence?: { basis: string; note: string; refs: string[] } }>; references: Record<string, { cite: string }> };
-type Msg = { role: 'user' | 'assistant'; content: string; mode?: 'claude' | 'offline'; degraded?: boolean };
+type Msg = { role: 'user' | 'assistant'; content: string; mode?: 'claude' | 'gemini' | 'offline'; degraded?: boolean };
 type Reply = { answer: string; mode: 'claude' | 'offline'; degraded?: boolean; aiAvailable: boolean; references: Record<string, string> };
 
 const CHIPS = ['Why am I flagged?', 'What should I do today?', 'Draft a message to the flight surgeon'];
@@ -32,10 +32,11 @@ export default function Insights() {
   const [busy, setBusy] = useState(false);
   const [aiOn, setAiOn] = useState(false);          // user's consent to send their numbers to Claude
   const [aiAvailable, setAiAvailable] = useState(false);
+  const [aiName, setAiName] = useState('an AI service');
   const scroller = useRef<ScrollView>(null);
   const convY = useRef(0);
 
-  useEffect(() => { getFlag('aiConsent').then(setAiOn); api<{ ai?: boolean }>('/api/health').then(h => setAiAvailable(!!h.ai)).catch(() => {}); }, []);
+  useEffect(() => { getFlag('aiConsent').then(setAiOn); api<{ ai?: boolean; aiProvider?: string | null }>('/api/health').then(h => { setAiAvailable(!!h.ai); if (h.aiProvider) setAiName(h.aiProvider); }).catch(() => {}); }, []);
   useEffect(() => { if (msgs.length) setTimeout(() => scroller.current?.scrollTo({ y: Math.max(0, convY.current - 12), animated: true }), 60); }, [msgs.length]);
 
   const toggleAi = (v: boolean) => { setAiOn(v); (v ? setFlag : clearFlag)('aiConsent'); };
@@ -71,7 +72,7 @@ export default function Insights() {
               </View>
               {m.role === 'assistant' ? (
                 <T size={10.5} color={A.ink3} style={{ marginTop: 3, marginLeft: 6 }}>
-                  {m.mode === 'claude' ? 'Claude, from your data' : m.degraded ? 'Offline rules (AI was unavailable)' : 'Offline rules, from your data'}
+                  {m.mode === 'claude' ? 'Claude, from your data' : m.mode === 'gemini' ? 'Gemini, from your data' : m.degraded ? 'Offline rules (AI was unavailable)' : 'Offline rules, from your data'}
                 </T>
               ) : null}
             </View>
@@ -94,8 +95,8 @@ export default function Insights() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 18, padding: 12 }}>
             <ShieldCheck size={18} color={A.copper} />
             <View style={{ flex: 1 }}>
-              <T size={13} weight="m" color={A.ink}>Let Claude phrase answers</T>
-              <T size={11.5} color={A.ink3} style={{ lineHeight: 16 }}>Sends your readings, not your name or email, to Anthropic.</T>
+              <T size={13} weight="m" color={A.ink}>Let AI phrase answers</T>
+              <T size={11.5} color={A.ink3} style={{ lineHeight: 16 }}>Sends your readings, not your name or email, to {aiName}.</T>
             </View>
             <Switch value={aiOn} onValueChange={toggleAi} trackColor={{ true: A.copper, false: A.line }} />
           </View>
