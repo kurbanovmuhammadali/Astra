@@ -101,7 +101,7 @@ test('Ask Astra offline: answers the question asked, never claims what it does n
 
   const today = await ask('what should i do today?');
   assert.match(today, /^Today:/m); assert.match(today, /Sleep: 5.5 of 7 h/);
-  assert.doesNotMatch(today, /Also suggested|null|? %/, 'no suggestions built from missing data');
+  assert.doesNotMatch(today, /Also suggested|null|\? %/, 'no suggestions built from missing data');
   assert.match(await ask('hello'), /^Hi!/);
   assert.match(await ask('Draft a message to the flight surgeon'), /^Draft for the flight surgeon/);
 });
