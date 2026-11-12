@@ -35,6 +35,9 @@ Home → **Log food & calories** (also Profile). Search built-in staples (incl. 
 ## Training check (camera)
 Home → **Training check**. Runs Google MediaPipe Pose Landmarker in the browser (33 body points; Astra uses 13: nose, shoulders, elbows, wrists, hips, knees, ankles). Reps are counted from joint angles and form is validated: squats need knee angle ≤ 100° at the bottom, push-ups need elbow ≤ 90° with a level body, pull-ups need elbow ≤ 80° and the chin above the bar. The video never leaves the device; only the result is saved (`POST /api/workouts`). Counting logic is unit-tested on synthetic skeletons (`npm run test:pose` in mobile/); it has not been validated against real people yet.
 
+## Deploy (Render)
+`render.yaml` defines one Web Service (API + built web app). In Render: New → Blueprint → pick this repo → fill the secrets it asks for (`RESEND_API_KEY`, `MAIL_FROM`, `USDA_API_KEY`, optionally `ANTHROPIC_API_KEY`) → deploy → set `APP_URL` to the service URL and redeploy. The web app is prebuilt in `server/public`; after changing the mobile code run `npm run build:web` in `mobile/` and commit the result. On the free plan the SQLite file is wiped on every restart (the guest demo reseeds itself); add a Render disk mounted at `/opt/render/project/src/server/data` to keep real accounts.
+
 ## Ask Astra (grounded AI helper)
 *Insights tab.* Answers are built from one snapshot of the user's own data plus the cited rules — flagged indicators, baselines, early-drift flags, today's plan changes, evidence ids. Two engines share the same guardrails:
 - **Offline** (default): deterministic, computed on our server, no external call. Includes a ready-to-edit SBAR message for the flight surgeon.

@@ -1,0 +1,28 @@
+# Render Blueprint: one web service serves the API and the built web app (server/public).
+# Secrets are NOT stored here: Render asks for them in the dashboard (sync: false).
+services:
+  - type: web
+    name: astra
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    startCommand: node src/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: TOKEN_ENC_KEY
+        generateValue: true
+      - key: APP_URL          # set to the service URL after the first deploy, e.g. https://astra-xxxx.onrender.com
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: USDA_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
