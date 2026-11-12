@@ -24,7 +24,9 @@ const param = (k: string) => (web ? new URLSearchParams(window.location.search).
 const embedded = web && window.self !== window.top && param('device') != null;
 
 /** True on a desktop-width browser tab (not inside the frame): render <DeviceFrame/> instead of the app. */
-export const shouldFrame = web && !embedded && window.innerWidth >= 700 && param('frame') !== '0';
+/** Set to true to bring the iPhone preview frame back on desktop (off while the web app and the native app are separate versions). */
+const FRAME_ENABLED = false;
+export const shouldFrame = FRAME_ENABLED && web && !embedded && window.innerWidth >= 700 && param('frame') !== '0';
 
 /** Inside the frame: give the app the device's safe-area insets. Elsewhere: pass through. */
 export function DeviceInsets({ children }: { children: React.ReactNode }) {
