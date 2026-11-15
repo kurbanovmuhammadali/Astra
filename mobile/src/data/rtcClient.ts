@@ -18,20 +18,20 @@ export const pubQuery = (base: string) => {
 };
 export const rtcSupported = () => typeof RTCPeerConnection !== 'undefined' && typeof WebSocket !== 'undefined';
 
-/** Best capture settings: HD at 30 fps (the browser falls back to what the camera can do). */
-export const HD_VIDEO = (face: 'environment' | 'user'): MediaTrackConstraints => ({ facingMode: { ideal: face }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } });
+/** Capture settings: 960x540 at 30 fps. Smooth motion matters more than pixels: a phone encodes this easily and the picture stays fluid. */
+export const HD_VIDEO = (face: 'environment' | 'user'): MediaTrackConstraints => ({ facingMode: { ideal: face }, width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 30, min: 24 } });
 
 /** Publish `getStream()` to every surgeon who joins. Returns a stop function. */
 /** Quality ladder: when the network gets tight the camera steps down (bitrate, resolution, frame rate) instead of freezing, and steps back up when it recovers. */
 const LADDER = [
-  { bps: 3_000_000, scale: 1, fps: 30 }, { bps: 1_500_000, scale: 1.5, fps: 24 }, { bps: 700_000, scale: 2, fps: 15 }, { bps: 300_000, scale: 3, fps: 10 },
+  { bps: 2_500_000, scale: 1, fps: 30 }, { bps: 1_600_000, scale: 1.33, fps: 30 }, { bps: 900_000, scale: 2, fps: 30 }, { bps: 400_000, scale: 3, fps: 20 },
 ];
 export type Quality = { label: 'excellent' | 'fair' | 'poor'; level: number; rttMs: number | null; lossPct: number | null };
 
 export function publish(query: string, getStream: () => MediaStream | null, onViewers: (n: number) => void, onQuality?: (q: Quality) => void): () => void {
   let ws: WebSocket | null = null, closed = false, retry: any = null;
   const peers = new Map<string, RTCPeerConnection>();
-  const levels = new Map<string, { level: number; good: number }>();
+  const levels = new Map<string, { level: number; good: number; bad?: number }>();
   const drop = (id: string) => { peers.get(id)?.close(); peers.delete(id); levels.delete(id); onViewers(peers.size); };
   const applyLevel = (pc: RTCPeerConnection, level: number) => {
     const L = LADDER[level];
@@ -53,10 +53,10 @@ export function publish(query: string, getStream: () => MediaStream | null, onVi
         if (r.type === 'remote-inbound-rtp' && r.kind === 'video') { if (typeof r.fractionLost === 'number') loss = r.fractionLost * 100; if (rtt == null && typeof r.roundTripTime === 'number') rtt = r.roundTripTime * 1000; }
       });
       const st = levels.get(id) ?? { level: 0, good: 0 };
-      const poor = (loss ?? 0) > 10 || (rtt ?? 0) > 800, fair = (loss ?? 0) > 3 || (rtt ?? 0) > 350;
+      const poor = (loss ?? 0) > 12 || (rtt ?? 0) > 1000, fair = (loss ?? 0) > 5 || (rtt ?? 0) > 600;
       if (poor) { st.level = Math.min(LADDER.length - 1, st.level + 1); st.good = 0; }
-      else if (fair) { st.good = 0; if (st.level === 0) st.level = 1; }
-      else if (++st.good >= 3 && st.level > 0) { st.level--; st.good = 0; }
+      else if (fair) { st.good = 0; st.bad = (st.bad ?? 0) + 1; if (st.bad >= 2 && st.level === 0) st.level = 1; }
+      else { st.bad = 0; if (++st.good >= 2 && st.level > 0) { st.level--; st.good = 0; } }
       levels.set(id, st); applyLevel(pc, st.level);
       const q: Quality = { label: poor ? 'poor' : fair || st.level > 0 ? 'fair' : 'excellent', level: st.level, rttMs: rtt == null ? null : Math.round(rtt), lossPct: loss == null ? null : Math.round(loss * 10) / 10 };
       if (!worst || q.level > worst.level) worst = q;
@@ -84,7 +84,7 @@ export function publish(query: string, getStream: () => MediaStream | null, onVi
         // high quality, steady frame rate: ~3 Mbps, keep resolution when the network is tight
         for (const snd of pc.getSenders()) if (snd.track?.kind === 'video') {
           const p = snd.getParameters(); p.encodings = p.encodings?.length ? p.encodings : [{}];
-          p.encodings[0].maxBitrate = 3_000_000; p.encodings[0].maxFramerate = 30; (p as any).degradationPreference = 'maintain-resolution';
+          p.encodings[0].maxBitrate = 2_500_000; p.encodings[0].maxFramerate = 30; (p as any).degradationPreference = 'maintain-framerate';
           snd.setParameters(p).catch(() => {});
         }
         const offer = await pc.createOffer(); await pc.setLocalDescription(offer);

@@ -17,7 +17,7 @@ export function CamViewer({ id, name }: { id: string | number; name: string }) {
   const [tick, setTick] = useState(0);
   const [bearer, setBearer] = useState<string | null>(null);
   const load = useCallback(() => api<St>(`/api/admin/crew/${id}/cam`).then(setSt).catch(() => {}), [id]);
-  useEffect(() => { load(); const t = setInterval(() => { load(); setTick(x => x + 1); }, 1200); return () => clearInterval(t); }, [load]);
+  useEffect(() => { load(); const t = setInterval(() => { load(); setTick(x => x + 1); }, 700); return () => clearInterval(t); }, [load]);
   useEffect(() => { if (Platform.OS !== 'web') getToken().then(setBearer); }, []);
   const [rs, setRs] = useState<'connecting' | 'live' | 'waiting' | 'failed'>('connecting');
   const [stats, setStats] = useState<ViewStats | null>(null);

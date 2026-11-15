@@ -100,13 +100,13 @@ export default function CaptureView({ base, autoStart, onExit }: { base: string;
       setDet('on');
       detTimer.current = setInterval(() => {
         const v = video.current;
-        if (!v || v.readyState < 2) return;
+        if (!v || v.readyState < 2 || (typeof document !== 'undefined' && document.hidden)) return;
         const lm = lmk.detectForVideo(v, performance.now()).landmarks?.[0] ?? null;
         const now = Date.now();
         let vx = 0; if (lm) { const hx = (lm[23].x + lm[24].x) / 2; if (prevHip.current) vx = (hx - prevHip.current.x) / Math.max(0.05, (now - prevHip.current.t) / 1000); prevHip.current = { x: hx, t: now }; } else prevHip.current = null;
         tl.current = observe(tl.current, classify(lm as any, { hipVx: vx }), now);
         if (now - lastReport.current >= 5 * 60_000) flushReport(false); // a report every five minutes while the camera runs
-      }, 220);
+      }, 1000);
     }).catch(() => setDet('error'));
   }, [flushReport]);
 
@@ -119,7 +119,7 @@ export default function CaptureView({ base, autoStart, onExit }: { base: string;
       stream.current = s; video.current.srcObject = s; await video.current.play();
       try { wake.current = await (navigator as any).wakeLock?.request('screen'); } catch { /* optional */ }
       setLive(true); setSent(0);
-      timer.current = setInterval(send, clipMode ? 30_000 : 2500); // slow JPEG backup + heartbeat; live video goes over WebRTC, far away short clips are sent instead
+      timer.current = setInterval(send, clipMode ? 30_000 : 1200); // slow JPEG backup + heartbeat; live video goes over WebRTC, far away short clips are sent instead
       if (clipMode) { setClipsSent(0); recordClip(); }
       else if (rtcSupported()) stopPub.current = publish(pubQuery(token), () => stream.current, setPeers, setQuality);
       startDetect();
