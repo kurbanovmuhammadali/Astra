@@ -3,7 +3,7 @@ import { TextInput, View } from 'react-native';
 import { K } from '@/kit/tokens';
 import { F } from '@/theme';
 import { Kicker, Txt } from '@/kit/core';
-import { Button, Card, Tag, toast } from '@/kit/ui';
+import { Button, Card, Chip, Tag, toast } from '@/kit/ui';
 import { api } from '@/api';
 import { MessageComposer } from '@/kit/MessageComposer';
 import { useApi } from '@/useApi';
@@ -12,7 +12,7 @@ type Norm = { metric: string; label: string; unit: string; learned: { mean: numb
 type Brain = {
   analyses: { at: string; level: string; summary: string }[];
   norms: Norm[];
-  notes: { id: number; text: string; at: string; doctor: string | null }[];
+  notes: { id: number; text: string; at: string; doctor: string | null; validUntil: string | null; active: number }[];
   adjustments: { id: number; day: string | null; kind: string; title: string; detail: string; status: string; by: string; at: string }[];
 };
 const tone = (l: string) => (l === 'alert' ? 'flag' : l === 'watch' ? 'watch' : l === 'ok' ? 'ok' : 'none');
@@ -22,6 +22,7 @@ const box = { height: 38, borderRadius: 10, borderWidth: 1.2, borderColor: K.hai
 export function DoctorBrain({ uid, name }: { uid: number; name: string }) {
   const { data, reload } = useApi<Brain>(`/api/admin/crew/${uid}/brain`);
   const [note, setNote] = useState('');
+  const [days, setDays] = useState<number | null>(7); // how long the note stays in force
   const [edit, setEdit] = useState<Record<string, { low: string; high: string }>>({});
   const [day, setDay] = useState(new Date(Date.now() + 864e5).toISOString().slice(0, 10));
   const first = name.split(' ')[0];
@@ -35,13 +36,14 @@ export function DoctorBrain({ uid, name }: { uid: number; name: string }) {
 
       {last ? <View style={{ marginTop: 10 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Tag label={`SI: ${last.level}`} tone={tone(last.level) as any} /><Txt v="caption" color={K.ink3}>{last.at} UTC</Txt></View><Txt v="sub" style={{ marginTop: 6 }}>{last.summary}</Txt></View> : <Txt v="sub" style={{ marginTop: 10 }}>No analysis yet.</Txt>}
 
-      <Kicker color={K.ink2} style={{ marginTop: 16 }}>Doctor's notes (the SI reads these)</Kicker>
+      <Kicker color={K.ink2} style={{ marginTop: 16 }}>Doctor's notes (the SI remembers them for as long as you choose)</Kicker>
       <TextInput value={note} onChangeText={setNote} multiline placeholder={`e.g. ${first} has a low resting heart rate (athlete). Avoid hard intervals this week.`} placeholderTextColor={K.ink3} style={{ ...box, height: 78, textAlign: 'left', paddingTop: 8, marginTop: 6 }} accessibilityLabel="Doctor note" />
-      <View style={{ marginTop: 8 }}><Button small title="Save note" disabled={note.trim().length < 2} onPress={() => run(async () => { await api(`/api/admin/crew/${uid}/doctor-notes`, { body: { text: note } }); setNote(''); }, 'Note saved')} /></View>
+      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>{([['Today', 1], ['This week', 7], ['This month', 30], ['Until I remove it', null]] as [string, number | null][]).map(([l, d]) => <Chip key={l} label={l} on={days === d} onPress={() => setDays(d)} />)}</View>
+      <View style={{ marginTop: 8 }}><Button small title="Save note" disabled={note.trim().length < 2} onPress={() => run(async () => { await api(`/api/admin/crew/${uid}/doctor-notes`, { body: { text: note, days } }); setNote(''); }, 'Note saved')} /></View>
       {data.notes.map(n => (
         <View key={n.id} style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: K.hair }}>
-          <Txt v="sub">{n.text}</Txt>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}><Txt v="caption" color={K.ink3} style={{ flex: 1 }}>{n.doctor ?? 'Doctor'} · {n.at} UTC</Txt><Button small kind="secondary" title="Delete" onPress={() => run(() => api(`/api/admin/doctor-notes/${n.id}`, { method: 'DELETE' }), 'Deleted')} /></View>
+          <Txt v="sub" color={n.active ? K.ink : K.ink3}>{n.text}</Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}><Txt v="caption" color={K.ink3} style={{ flex: 1 }}>{n.doctor ?? 'Doctor'} · {n.at} UTC · {n.validUntil ? (n.active ? `in force until ${n.validUntil}` : `ended ${n.validUntil}`) : 'in force until removed'}</Txt><Button small kind="secondary" title="Delete" onPress={() => run(() => api(`/api/admin/doctor-notes/${n.id}`, { method: 'DELETE' }), 'Deleted')} /></View>
         </View>
       ))}
 

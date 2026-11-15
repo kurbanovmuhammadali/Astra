@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS ai_analyses (id INTEGER PRIMARY KEY, user_id INTEGER 
 CREATE TABLE IF NOT EXISTS plan_adjustments (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, day TEXT, kind TEXT NOT NULL, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'proposed', by TEXT NOT NULL DEFAULT 'si', created_at TEXT NOT NULL DEFAULT (datetime('now')), decided_at TEXT);
 `);
 
+try { db.exec('ALTER TABLE doctor_notes ADD COLUMN valid_until TEXT'); } catch { /* already there */ }
 const bad = (res, m, c = 400) => res.status(c).json({ error: m });
 const str = (v, n) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, n);
 const ms = s => Date.parse(String(s).replace(' ', 'T') + 'Z');
@@ -87,18 +88,26 @@ function latestReadings(userId) {
 export function datasetFor(userId) {
   const u = db.prepare('SELECT name, dob, mission, mission_years, height_cm, weight_kg FROM users WHERE id = ?').get(userId);
   const b = readBackground(userId) ?? {};
-  const notes = db.prepare('SELECT n.text, n.created_at, d.name AS doctor FROM doctor_notes n LEFT JOIN users d ON d.id = n.by_user WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 8').all(userId).map(n => ({ doctor: n.doctor, at: n.created_at, text: str(n.text, 300) }));
+  const noteRow = n => ({ doctor: n.doctor, writtenAt: n.created_at, validUntil: n.valid_until ?? 'until the doctor removes it', daysLeft: n.valid_until ? Math.max(0, Math.round((Date.parse(n.valid_until + 'T23:59:59Z') - Date.now()) / 864e5)) : null, text: str(n.text, 500) });
+  const noteSql = 'SELECT n.text, n.created_at, n.valid_until, d.name AS doctor FROM doctor_notes n LEFT JOIN users d ON d.id = n.by_user WHERE n.user_id = ?';
+  const notes = db.prepare(noteSql + " AND (n.valid_until IS NULL OR n.valid_until >= date('now')) ORDER BY n.id DESC LIMIT 25").all(userId).map(noteRow);
+  const earlierNotes = db.prepare(noteSql + " AND n.valid_until < date('now') ORDER BY n.id DESC LIMIT 3").all(userId).map(n => ({ ...noteRow(n), expired: true, text: str(n.text, 160) }));
   const norms = {}; for (const m of Object.keys(WATCHED)) { const n = normOf(userId, m); if (n) norms[m] = n; }
   const ov = db.prepare('SELECT data FROM plan_overrides WHERE user_id = ?').get(userId);
   let plan = null; try { plan = ov ? JSON.parse(ov.data) : null; } catch {}
   const last = db.prepare('SELECT at, level, summary FROM ai_analyses WHERE user_id = ? ORDER BY id DESC LIMIT 1').get(userId);
   const adj = db.prepare("SELECT id, day, kind, title, status, by FROM plan_adjustments WHERE user_id = ? AND status IN ('applied','proposed') AND (day IS NULL OR day >= date('now','-1 day')) ORDER BY day LIMIT 12").all(userId);
   const checks = db.prepare('SELECT symptoms, note, recorded_at FROM checkins WHERE user_id = ? ORDER BY recorded_at DESC LIMIT 3').all(userId).map(c => { let s = []; try { s = JSON.parse(c.symptoms); } catch {} return { at: c.recorded_at, symptoms: s, note: c.note ? str(c.note, 120) : null }; });
+  // Order matters: the prompt is cut at a size limit, so what the doctor decided comes FIRST and can never be the part that is lost.
   return {
+    doctorNotes: notes,
+    doctorPlan: plan ? { intensity: plan.intensity ?? null, message: plan.message ?? null, resistancePerWeek: plan.resistancePerWeek ?? null, zone2Minutes: plan.zone2Minutes ?? null, week: plan.week ?? null, tasks: (plan.tasks ?? []).map(t => t.title) } : null,
+    norms,
+    planChanges: adj,
     person: { isAdmin: !!isAdminUser(db.prepare('SELECT id, email, role FROM users WHERE id = ?').get(userId) ?? {}), name: u?.name, mission: u?.mission, missionYears: u?.mission_years, heightCm: u?.height_cm, weightKg: u?.weight_kg },
     healthFile: { allergies: b.allergies || null, medications: b.medications || null, conditions: (b.conditions ?? []).map(c => `${c.name}${c.notes ? ` (${c.notes})` : ''}`), shared: !!b.sharedConsent },
-    doctorNotes: notes, norms, doctorPlan: plan ? { intensity: plan.intensity ?? null, message: plan.message ?? null, resistancePerWeek: plan.resistancePerWeek ?? null, zone2Minutes: plan.zone2Minutes ?? null } : null,
-    readings: latestReadings(userId), lastAnalysis: last ?? null, planChanges: adj, recentCheckins: checks,
+    earlierNotes,
+    readings: latestReadings(userId), lastAnalysis: last ?? null, recentCheckins: checks,
   };
 }
 
@@ -114,7 +123,7 @@ export async function analyzeUser(userId) {
       : `${flags.map(f => `${METRICS[f.metric]?.label ?? f.metric} ${f.value} ${f.unit} (${f.why})`).join('; ')}${sym.length ? `; symptoms: ${sym.join(', ')}` : ''}.`;
   if (level !== 'nodata' && companionConfigured()) {
     try {
-      const out = await askModel('You are the Celeste SI analysing one astronaut every 30 minutes. Use ONLY the dataset. Doctor notes and doctor-set norms win over learned norms. In 2 short sentences say whether the readings are good or not for THIS person and the one safest next step. No diagnosis, no invented numbers.', `DATASET\n${JSON.stringify({ level, flags, ...ds }).slice(0, 5500)}`, 220);
+      const out = await askModel('You are the Celeste SI analysing one astronaut every 30 minutes. Use ONLY the dataset. Doctor notes and doctor-set norms win over learned norms. In 2 short sentences say whether the readings are good or not for THIS person and the one safest next step. No diagnosis, no invented numbers.', `DATASET\n${JSON.stringify({ level, flags, ...ds }).slice(0, 8000)}`, 220);
       if (out.text && !out.refused) summary = out.text.replace(/\s+/g, ' ').slice(0, 500);
     } catch { /* keep the deterministic summary */ }
   }
@@ -211,7 +220,7 @@ export function mountBrain(app) {
     const analyses = db.prepare('SELECT at, level, summary, flags FROM ai_analyses WHERE user_id = ? ORDER BY id DESC LIMIT 8').all(id).map(a => ({ ...a, flags: JSON.parse(a.flags) }));
     const norms = Object.keys(WATCHED).map(m => ({ metric: m, label: METRICS[m]?.label ?? m, unit: METRICS[m]?.unit ?? '', learned: db.prepare('SELECT mean, sd, n, low, high FROM learned_norms WHERE user_id = ? AND metric = ?').get(id, m) ?? null, doctor: db.prepare('SELECT low, high, note FROM doctor_norms WHERE user_id = ? AND metric = ?').get(id, m) ?? null }));
     const adjustments = db.prepare('SELECT id, day, kind, title, detail, status, by, created_at AS at FROM plan_adjustments WHERE user_id = ? ORDER BY id DESC LIMIT 20').all(id);
-    res.json({ dataset: ds, analyses, norms, notes: db.prepare('SELECT n.id, n.text, n.created_at AS at, d.name AS doctor FROM doctor_notes n LEFT JOIN users d ON d.id = n.by_user WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 30').all(id), adjustments });
+    res.json({ dataset: ds, analyses, norms, notes: db.prepare(`SELECT n.id, n.text, n.created_at AS at, n.valid_until AS validUntil, (n.valid_until IS NULL OR n.valid_until >= date('now')) AS active, d.name AS doctor FROM doctor_notes n LEFT JOIN users d ON d.id = n.by_user WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 30`).all(id), adjustments });
   });
   app.put('/api/admin/crew/:id/norms/:metric', requireAdmin, (req, res) => {
     if (!known(req.params.id) || !WATCHED[req.params.metric]) return bad(res, 'Not found.', 404);
@@ -226,7 +235,9 @@ export function mountBrain(app) {
   app.post('/api/admin/crew/:id/doctor-notes', requireAdmin, (req, res) => {
     if (!known(req.params.id)) return bad(res, 'Not found.', 404);
     const text = str(req.body?.text, 600); if (text.length < 2) return bad(res, 'Write a note.');
-    db.prepare('INSERT INTO doctor_notes (user_id, by_user, text) VALUES (?,?,?)').run(Number(req.params.id), req.user.id, text);
+    const days = req.body?.days == null || req.body.days === '' ? null : Math.round(Number(req.body.days)); // how long the note is in force: null = until the doctor removes it
+    if (days != null && !(days >= 1 && days <= 365)) return bad(res, 'Choose 1 to 365 days, or no end date.');
+    db.prepare("INSERT INTO doctor_notes (user_id, by_user, text, valid_until) VALUES (?,?,?, CASE WHEN ? IS NULL THEN NULL ELSE date('now', '+' || ? || ' days') END)").run(Number(req.params.id), req.user.id, text, days, days);
     res.json({ ok: true });
   });
   app.delete('/api/admin/doctor-notes/:nid', requireAdmin, (req, res) => { db.prepare('DELETE FROM doctor_notes WHERE id = ?').run(Number(req.params.nid)); res.json({ ok: true }); });

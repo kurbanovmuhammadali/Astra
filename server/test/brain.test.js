@@ -136,3 +136,21 @@ test('numbers read from a PDF or photo are confirmed by the person before they a
   // a number that is in a text file the person attached is recorded straight away
   assert.equal(brain.applyLogs(self, [{ type: 'log', metric: 'weight', value: 77.5 }], 'add my weight', { fileText: 'Weight: 77.5 kg' }).length, 1);
 });
+
+test('doctor notes stay in force for the period the doctor chose, and always come first in what the SI sees', async () => {
+  assert.equal((await doc('POST', `/api/admin/crew/${me}/doctor-notes`, { text: 'bad', days: 999 })).status, 400);
+  assert.equal((await doc('POST', `/api/admin/crew/${me}/doctor-notes`, { text: 'This week: no overhead lifting (shoulder).', days: 7 })).status, 200);
+  assert.equal((await doc('POST', `/api/admin/crew/${me}/doctor-notes`, { text: 'Always: carry the inhaler on EVA.' })).status, 200);
+  db.prepare("INSERT INTO doctor_notes (user_id, by_user, text, valid_until) VALUES (?, NULL, 'Last month: fast for the blood test.', date('now','-3 days'))").run(me);
+  let ds = brain.datasetFor(me);
+  assert.ok(ds.doctorNotes.some(n => /overhead/.test(n.text) && n.daysLeft >= 6 && n.daysLeft <= 7));
+  assert.ok(ds.doctorNotes.some(n => /inhaler/.test(n.text) && n.validUntil === 'until the doctor removes it'));
+  assert.ok(!ds.doctorNotes.some(n => /fast for the blood test/.test(n.text)));          // expired: not in force
+  assert.ok(ds.earlierNotes.some(n => /fast for the blood test/.test(n.text) && n.expired)); // but kept as history
+  const json = JSON.stringify(ds);
+  assert.ok(json.indexOf('doctorNotes') < json.indexOf('readings') && json.indexOf('norms') < json.indexOf('readings')); // never the part that gets cut
+  const { assistantPrompt } = await import('../src/companion.js');
+  assert.match(assistantPrompt({}, '', { dataset: ds }), /overhead lifting/);
+  const list = await doc('GET', `/api/admin/crew/${me}/brain`);
+  assert.ok(list.body.notes.some(n => /overhead/.test(n.text) && n.active && n.validUntil));
+});
