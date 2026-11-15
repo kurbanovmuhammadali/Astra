@@ -81,7 +81,9 @@ test('calls: astronaut rings the doctors, a doctor answers; family can NOT call 
   adaWs.send(JSON.stringify({ type: 'signal', callId: inc.callId, data: { sdp: 'OFFER' } })); assert.equal((await wait(docWs, m => m.type === 'signal')).data.sdp, 'OFFER');
   docWs.send(JSON.stringify({ type: 'end', callId: inc.callId })); await wait(adaWs, m => m.type === 'ended');
   adaWs.send(JSON.stringify({ type: 'call', to: `u:${benId}`, kind: 'crew' })); assert.equal((await wait(adaWs, m => m.type === 'unavailable')).reason, 'offline'); // Ben is not connected
-  const f = (await ada('POST', '/api/me/family', { name: 'Mama', relation: 'Mother' })).body.contact; assert.ok(f.token.length >= 20);
+  const f0 = (await ada('POST', '/api/me/family', { name: 'Mama', relation: 'Mother' })).body.contact; assert.match(f0.code, /^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/); assert.equal(f0.token, undefined); // the astronaut sees a short code, never the private credential
+  const login = await fetch(`${base}/api/relative/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: f0.code.toLowerCase().replace('-', ' ') }) }).then(r => r.json()); // typed sloppily: still works
+  const f = { ...f0, token: login.token }; assert.ok(f.token.length >= 20); assert.equal(login.astronaut, 'Ada');
   const guest = await sock(`role=family&token=${f.token}`); assert.ok(guest); assert.equal(await sock('role=family&token=not-a-real-token-0000000'), null);
   guest.send(JSON.stringify({ type: 'call', to: 'owner', kind: 'family' })); assert.equal((await wait(guest, m => m.type === 'unavailable')).reason, 'no-live-link'); // family never calls: video and messages only
   assert.equal((await fetch(`${base}/api/family/${f.token}/info`).then(r => r.json())).astronaut, 'Ada');
@@ -122,3 +124,24 @@ test('surgeons made by ADMIN_EMAILS also receive emergency alerts', async () => 
   assert.ok(await wait(ws, m => m.type === 'incident')); ws.close(); delete process.env.ADMIN_EMAILS;
 });
 test.after(() => { srv.close(); setTimeout(() => process.exit(0), 50); });
+
+test('family code: wrong codes are refused and limited, a new code kills the old one, "sign out devices" kills the old credential, expired codes fail', async () => {
+  const fam = (await ada('GET', '/api/me/family')).body.family[0];
+  const post = (code, ip) => fetch(`${base}/api/relative/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip ?? '' }, body: JSON.stringify({ code }) });
+  assert.equal((await post('ZZZZ-ZZZZ')).status, 404);
+  assert.equal((await post('')).status, 404);
+  const old = fam.code;
+  const r = (await ada('POST', `/api/me/family/${fam.id}/code`, {})).body.contact; assert.notEqual(r.code, old);
+  assert.equal((await post(old)).status, 404); assert.equal((await post(r.code)).status, 200); // the old code is dead, the new one works
+  const tok = (await (await post(r.code)).json()).token;
+  assert.equal((await fetch(`${base}/api/family/${tok}/info`)).status, 200);
+  await ada('POST', `/api/me/family/${fam.id}/code`, { signOutDevices: true });
+  assert.equal((await fetch(`${base}/api/family/${tok}/info`)).status, 404); // a device that entered earlier is signed out
+  const { db } = await import('../src/db.js');
+  db.prepare("UPDATE family_contacts SET code_expires = date('now', '-1 day') WHERE id = ?").run(fam.id);
+  const cur = db.prepare('SELECT code FROM family_contacts WHERE id = ?').get(fam.id).code;
+  assert.equal((await post(cur)).status, 404); // expired
+  assert.notEqual((await ada('GET', '/api/me/family')).body.family[0].code, cur); // opening the family page issues a fresh one
+  for (let i = 0; i < 14; i++) await post('AAAA-BBBB');
+  assert.equal((await post('AAAA-BBBB')).status, 429); // guessing is rate limited
+});

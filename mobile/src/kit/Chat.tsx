@@ -197,8 +197,8 @@ export function ChatComposer({ target, onSent }: { target: Target; onSent?: () =
 }
 
 /** A full chat page: header, thread, composer. `mineIs` says which side of the table "you" are (0 = astronaut, 1 = family). */
-export function ChatScreen({ title, sub, onBack, load, mineIs, mediaPath, target, emptyText }: {
-  title: string; sub?: string; onBack?: () => void; load: (after: number) => Promise<ChatMsg[]>; mineIs: 0 | 1; mediaPath: (m: ChatMsg) => string; target: Target; emptyText?: string;
+export function ChatScreen({ title, sub, onBack, right, load, mineIs, mediaPath, target, emptyText }: {
+  title: string; sub?: string; onBack?: () => void; right?: React.ReactNode; load: (after: number) => Promise<ChatMsg[]>; mineIs: 0 | 1; mediaPath: (m: ChatMsg) => string; target: Target; emptyText?: string;
 }) {
   const insets = useSafeAreaInsets();
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -218,6 +218,7 @@ export function ChatScreen({ title, sub, onBack, load, mineIs, mediaPath, target
           {onBack ? <Pressy label="Back" onPress={onBack}><ChevronLeft size={24} color={K.ink} /></Pressy> : null}
           <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: K.copper, alignItems: 'center', justifyContent: 'center' }}><Txt v="subM" color="#fff">{title.slice(0, 1).toUpperCase()}</Txt></View>
           <View style={{ flex: 1 }}><Txt v="headline" numberOfLines={1}>{title}</Txt>{sub ? <Txt v="caption" color={K.ink2} numberOfLines={2}>{sub}</Txt> : null}</View>
+          {right}
         </View>
       </LinearGradient>
       <ChatThread messages={msgs} mineIs={mineIs} mediaPath={mediaPath} pending={pending} empty={emptyText} />

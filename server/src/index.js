@@ -5,7 +5,7 @@ import { aiSnapshot, freshenWhoop } from './aidata.js';
 import { mountVoicemail } from './voicemail.js';
 import { mountUploads } from './uploads.js';
 import { mountBrain, startBrain, datasetFor, extractProposals, storeProposals, applyLogs, applyProfile, mountMemory, memoryOf, rememberFrom } from './brain.js';
-import { mountDemo, demoOn, DEMO_FAMILY_TOKEN } from './demo-accounts.js';
+import { mountDemo, demoOn, DEMO_FAMILY_CODE } from './demo-accounts.js';
 import { ttsOn, speakWav, speakable } from './tts.js';
 import { existsSync, readFileSync } from 'node:fs';
 import https from 'node:https';
@@ -74,7 +74,7 @@ const authResponse = (req, res, user) => {
 };
 
 // ------------------------------------------------------------------ meta / legal
-app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), voice: ttsOn(), demoAccounts: demoOn(), demoFamilyToken: demoOn() ? DEMO_FAMILY_TOKEN : undefined, mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), voice: ttsOn(), demoAccounts: demoOn(), demoFamilyCode: demoOn() ? DEMO_FAMILY_CODE : undefined, mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
 app.get('/api/catalog', (_req, res) => res.json({ metrics: METRICS, systems: SYSTEMS, symptoms: SYMPTOMS }));
 
 // ------------------------------------------------------------------ auth

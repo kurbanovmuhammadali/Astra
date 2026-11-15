@@ -17,6 +17,7 @@ import { dirname, resolve } from 'node:path';
 
 /** The private link of the demo relative (Alex's mother). Anyone can open it from the login page. */
 export const DEMO_FAMILY_TOKEN = 'demo-family-mother-alex-2026';
+export const DEMO_FAMILY_CODE = 'DEMO-MOM7'; // the demo relative signs in with this code, like a real one (it never expires)
 
 const CLIP = resolve(dirname(fileURLToPath(import.meta.url)), '../assets/demo-clip.webm'); // a 6 s video made for the demo (Earth from orbit, "Hi Mom")
 
@@ -132,6 +133,7 @@ export function seedDemoFamily() {
       say(1, 'We are so proud of you, Alex. Everyone at home sends love. Dad fixed the fence!');
     }
     const fam = db.prepare('SELECT id FROM family_contacts WHERE token = ?').get(DEMO_FAMILY_TOKEN);
+    if (fam) db.prepare("UPDATE family_contacts SET code = ?, code_expires = date('now', '+3650 days') WHERE id = ?").run(DEMO_FAMILY_CODE, fam.id);
     if (fam && existsSync(CLIP) && !db.prepare("SELECT 1 FROM family_messages WHERE contact_id = ? AND kind = 'video'").get(fam.id)) {
       db.prepare("INSERT INTO family_messages (contact_id, from_family, text, kind, mime, media, seconds) VALUES (?,0,?,'video','video/webm',?,6)").run(fam.id, 'A little hello from orbit.', readFileSync(CLIP));
     }

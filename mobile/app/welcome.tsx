@@ -58,6 +58,7 @@ export default function Welcome() {
           </View>
           <Pill title="Get started" kind="outline" onPress={() => { draft.reset(); nav.push('/name'); }} />
           <T size={13.5} color={A.copper} weight="m" center style={{ marginTop: 16 }} onPress={() => { draft.reset(); nav.push('/doctor'); }}>I’m a doctor · flight surgeon sign-in</T>
+          <T size={13.5} color={A.copper} weight="m" center style={{ marginTop: 10 }} onPress={() => nav.push('/relative')}>I’m a relative · family code</T>
         </Animated.View>
       </View>
       </MotionScreen>

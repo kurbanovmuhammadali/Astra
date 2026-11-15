@@ -199,9 +199,16 @@ export function mountTeam(app) {
   app.get('/api/admin/crews', requireAdmin, (_req, res) => res.json({ crews: db.prepare("SELECT c.id, c.name, c.code, (SELECT COUNT(*) FROM crew_members m WHERE m.crew_id = c.id) AS members FROM crews c ORDER BY c.name").all() }));
 
   // ---------------------------------------------------------------- family
-  const famView = f => ({ id: f.id, name: f.name, relation: f.relation, token: f.token, online: online(`f:${f.id}`), unread: db.prepare('SELECT COUNT(*) n FROM family_messages WHERE contact_id = ? AND from_family = 1 AND id > COALESCE((SELECT last_read FROM family_read WHERE contact_id = ?), 0)').get(f.id, f.id).n });
+  const famView = f0 => { const f = ensureCode(f0); return ({ id: f.id, name: f.name, relation: f.relation, code: f.code, codeExpires: f.code_expires, online: online(`f:${f.id}`), unread: db.prepare('SELECT COUNT(*) n FROM family_messages WHERE contact_id = ? AND from_family = 1 AND id > COALESCE((SELECT last_read FROM family_read WHERE contact_id = ?), 0)').get(f.id, f.id).n }); };
   db.exec('CREATE TABLE IF NOT EXISTS family_read (contact_id INTEGER PRIMARY KEY, last_read INTEGER NOT NULL)');
   for (const col of ["kind TEXT NOT NULL DEFAULT 'text'", 'mime TEXT', 'media BLOB', 'seconds INTEGER NOT NULL DEFAULT 0', 'client_id TEXT']) { try { db.exec(`ALTER TABLE family_messages ADD COLUMN ${col}`); } catch { /* already there */ } }
+  for (const col of ['code TEXT', 'code_expires TEXT']) { try { db.exec(`ALTER TABLE family_contacts ADD COLUMN ${col}`); } catch { /* already there */ } }
+  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_family_code ON family_contacts(code)'); } catch { /* ignore */ }
+  /** A family code is read aloud and typed on a phone, so it avoids look-alike characters: 8 of 31 symbols (about 8.5e11 combinations). */
+  const ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const newFamilyCode = () => { for (;;) { const b = randomBytes(8); let c = ''; for (const x of b) c += ALPHA[x % ALPHA.length]; c = c.slice(0, 4) + '-' + c.slice(4); if (!db.prepare('SELECT 1 FROM family_contacts WHERE code = ?').get(c)) return c; } };
+  const CODE_DAYS = 14;
+  const ensureCode = f => { if (f.code && f.code_expires && f.code_expires >= new Date().toISOString().slice(0, 10)) return f; const code = newFamilyCode(); db.prepare("UPDATE family_contacts SET code = ?, code_expires = date('now', '+' || ? || ' days') WHERE id = ?").run(code, CODE_DAYS, f.id); return db.prepare('SELECT * FROM family_contacts WHERE id = ?').get(f.id); };
   const MSG_COLS = 'id, from_family AS fromFamily, text, kind, seconds, created_at AS at, (media IS NOT NULL AND LENGTH(media) > 0) AS hasMedia';
   const addMessage = (f, fromFamily, parsed, clientId) => db.prepare('INSERT INTO family_messages (contact_id, from_family, text, kind, mime, media, seconds, client_id) VALUES (?,?,?,?,?,?,?,?)').run(f.id, fromFamily, parsed.text, parsed.kind, parsed.mime, parsed.data.length ? parsed.data : null, parsed.seconds, clientId ? String(clientId).slice(0, 60) : null);
   const sendMedia = (res, row) => { if (!row || !row.media) return bad(res, 'Not found.', 404); res.set({ 'Content-Type': row.mime, 'Cache-Control': 'no-store' }).send(Buffer.from(row.media)); };
@@ -212,6 +219,21 @@ export function mountTeam(app) {
     if (db.prepare('SELECT COUNT(*) n FROM family_contacts WHERE user_id = ?').get(req.user.id).n >= 12) return bad(res, 'You can add up to 12 family members.', 409);
     const { lastInsertRowid: id } = db.prepare('INSERT INTO family_contacts (user_id, name, relation, token) VALUES (?,?,?,?)').run(req.user.id, name, clip(req.body?.relation, 30), randomBytes(18).toString('base64url'));
     res.json({ contact: famView(db.prepare('SELECT * FROM family_contacts WHERE id = ?').get(id)) });
+  });
+  // a new code (the old one stops working); "all" also signs out every device that already entered with it
+  app.post('/api/me/family/:id/code', requireAuth, (req, res) => {
+    const f = db.prepare('SELECT * FROM family_contacts WHERE id = ? AND user_id = ?').get(Number(req.params.id), req.user.id); if (!f) return bad(res, 'Not found.', 404);
+    db.prepare("UPDATE family_contacts SET code = ?, code_expires = date('now', '+' || ? || ' days') WHERE id = ?").run(newFamilyCode(), CODE_DAYS, f.id);
+    if (req.body?.signOutDevices) db.prepare('UPDATE family_contacts SET token = ? WHERE id = ?').run(randomBytes(18).toString('base64url'), f.id);
+    res.json({ contact: famView(db.prepare('SELECT * FROM family_contacts WHERE id = ?').get(f.id)) });
+  });
+  // public: a relative signs in with the code the astronaut read to them. Rate limited; the reply carries the private credential the page keeps on that device.
+  app.post('/api/relative/login', (req, res) => {
+    if (!rateLimit(`rel:${req.ip}`, 12, 15 * 60e3)) return bad(res, 'Too many tries. Wait a few minutes.', 429);
+    const code = String(req.body?.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const f = code.length === 8 || /^DEMO/.test(code) ? db.prepare("SELECT f.*, u.name AS astro FROM family_contacts f JOIN users u ON u.id = f.user_id WHERE REPLACE(f.code, '-', '') = ? AND f.code_expires >= date('now')").get(code) : null;
+    if (!f) return bad(res, 'That code is not right, or it has expired. Ask for a new one.', 404);
+    res.json({ token: f.token, name: f.name, astronaut: first(f.astro) });
   });
   app.delete('/api/me/family/:id', requireAuth, (req, res) => { db.prepare('DELETE FROM family_contacts WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.user.id); res.json({ ok: true }); });
   app.get('/api/me/family/:id/messages', requireAuth, (req, res) => {

@@ -52,8 +52,8 @@ test('demo accounts can be switched off', async () => {
 test.after(() => srv.close());
 
 test('the demo relative: a private link with messages and a photo; family sends a video through resumable upload; no calls', async () => {
-  const h = await (await fetch(`${base}/api/health`)).json(); assert.ok(h.demoFamilyToken && h.demoFamilyToken.length >= 20);
-  const t = h.demoFamilyToken;
+  const h = await (await fetch(`${base}/api/health`)).json(); assert.equal(h.demoFamilyCode, 'DEMO-MOM7');
+  const t = (await (await fetch(`${base}/api/relative/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: h.demoFamilyCode }) })).json()).token; assert.ok(t && t.length >= 20); // the demo relative signs in with a code, like a real one
   const msgs = (await (await fetch(`${base}/api/family/${t}/messages`)).json()).messages;
   assert.ok(msgs.length >= 3); const photo = msgs.find(m => m.kind === 'photo'); assert.ok(photo && photo.hasMedia);
   const img = await fetch(`${base}/api/family/${t}/messages/${photo.id}/media`); assert.equal(img.status, 200); assert.equal(img.headers.get('content-type'), 'image/png');

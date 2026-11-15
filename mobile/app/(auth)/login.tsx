@@ -17,8 +17,8 @@ export default function Login() {
   const [d, set] = useDraft();
   const { requestCode, faceLogin, demoLogin } = useAuth();
   const [demoOn, setDemoOn] = useState(false);
-  const [famToken, setFamToken] = useState<string | null>(null);
-  React.useEffect(() => { api<{ demoAccounts?: boolean; demoFamilyToken?: string }>('/api/health').then(h => { setDemoOn(!!h.demoAccounts); setFamToken(h.demoFamilyToken ?? null); }).catch(() => {}); }, []);
+  const [famCode, setFamCode] = useState<string | null>(null);
+  React.useEffect(() => { api<{ demoAccounts?: boolean; demoFamilyCode?: string }>('/api/health').then(h => { setDemoOn(!!h.demoAccounts); setFamCode(h.demoFamilyCode ?? null); }).catch(() => {}); }, []);
   const tryDemo = async (as: 'astronaut' | 'astronaut-iss' | 'doctor' | 'leader') => { setBusy(true); setErr(null); try { await demoLogin(as); nav.replace(as === 'astronaut' || as === 'astronaut-iss' ? '/today' : as === 'leader' ? '/admin/leader' : '/admin'); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   const [faceOk, setFaceOk] = useState(false), [scan, setScan] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -60,7 +60,7 @@ export default function Login() {
           <View style={{ gap: 8, marginTop: 10 }}>
             <Press onPress={() => tryDemo('astronaut')} label="Demo astronaut" style={{ padding: 12, borderRadius: 14, backgroundColor: A.copper }}><T size={14} weight="m" color="#fff">Demo astronaut · Alex (Mars: messages only)</T></Press>
             <Press onPress={() => tryDemo('astronaut-iss')} label="Demo ISS astronaut" style={{ padding: 12, borderRadius: 14, backgroundColor: A.copper }}><T size={14} weight="m" color="#fff">Demo astronaut · Mira (ISS: live calls)</T></Press>
-            {famToken ? <Press onPress={() => nav.push(`/f/${famToken}` as any)} label="Demo relative" style={{ padding: 12, borderRadius: 14, backgroundColor: A.sand2, borderWidth: 1, borderColor: A.line }}><T size={14} weight="m" color={A.ink}>Demo relative · Mom (videos and messages)</T></Press> : null}
+            {famCode ? <Press onPress={() => nav.push({ pathname: '/relative', params: { code: famCode } } as any)} label="Demo relative" style={{ padding: 12, borderRadius: 14, backgroundColor: A.sand2, borderWidth: 1, borderColor: A.line }}><T size={14} weight="m" color={A.ink}>Demo relative · Mom (family code)</T></Press> : null}
             <Press onPress={() => tryDemo('doctor')} label="Demo doctor" style={{ padding: 12, borderRadius: 14, backgroundColor: A.ink }}><T size={14} weight="m" color="#fff">Demo doctor · Dr. Elena Voss</T></Press>
             <Press onPress={() => tryDemo('leader')} label="Demo team leader" style={{ padding: 12, borderRadius: 14, backgroundColor: A.sand2, borderWidth: 1, borderColor: A.line }}><T size={14} weight="m" color={A.ink}>Demo team leader · Cmdr. Volkova</T></Press>
           </View>
