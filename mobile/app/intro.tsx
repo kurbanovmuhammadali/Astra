@@ -16,6 +16,7 @@ import { AstraLogo, IMG, RATIO } from '@/astra';
 import { setFlag } from '@/storage';
 import { realWidth, setFullWindow } from '@/DeviceFrame';
 import { nav } from '@/motion';
+import { useAuth } from '@/auth';
 import { Txt, haptic } from '@/kit/core';
 
 const native = Platform.OS !== 'web';
@@ -29,6 +30,8 @@ const DISSOLVE_AT = 0.95; // seconds before the end when the hand-off starts
 export default function Intro() {
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const userRef = useRef(user); userRef.current = user;
   const { replay } = useLocalSearchParams<{ replay?: string }>();
   const [ready, setReady] = useState(false);
   const [muted, setMuted] = useState(false); // sound on by default; if the browser refuses, fall back to muted + a clear "sound" button
@@ -57,7 +60,7 @@ export default function Intro() {
       try { player.pause(); } catch {}
       if (replay) { router.back(); return; }
       nav.seamless();
-      router.replace('/welcome');
+      router.replace(userRef.current ? (userRef.current.role === 'leader' ? '/admin/leader' : userRef.current.role === 'surgeon' ? '/admin' : '/today') : '/welcome'); // a signed-in visitor (the /demo link) lands in the app after the film
     });
     if (!wide) return handOff();
     // laptop: film fades out across the window → the column (with the Welcome composition) fades in

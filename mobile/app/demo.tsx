@@ -13,7 +13,7 @@ export default function Demo() {
   const who = as === 'doctor' ? 'doctor' : as === 'leader' ? 'leader' : as === 'iss' ? 'astronaut-iss' : 'astronaut';
   useEffect(() => { if (!ready) return; /* wait for the first session check, or its late answer could overwrite the sign-in */ demoLogin(who as any).catch(e => setErr(e?.message ?? 'The demo is not available right now.')); }, [ready]);
   // go only once the signed-in state is really in place, so the destination does not send you back to Welcome
-  useEffect(() => { if (user) router.replace(user.role === 'surgeon' ? '/admin' : user.role === 'leader' ? '/admin/leader' : '/today'); }, [user]);
+  useEffect(() => { if (user) router.replace('/intro'); }, [user]); // the opening film always plays first; when it ends, a signed-in visitor goes on to the app
   return (
     <View style={{ flex: 1, backgroundColor: A.sand, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <Txt v="title" center>{err ? 'The demo is not available' : 'Opening the Celeste demo…'}</Txt>
