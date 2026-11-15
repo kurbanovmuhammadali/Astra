@@ -14,6 +14,20 @@ export type AppState = {
   chats: Chat[];
   devices: { appleWatch?: boolean };
   seeded?: boolean;
+  /** Mission briefing (set before tracking; editable in Profile › Mission briefing). */
+  briefing: { dest: 'iss' | 'moon' | 'mars' | 'jupiter' | 'deep'; commDelayMin: number; evaDates: string[]; crewSize: number; objective: string; custom?: boolean };
+  /** Synthetic Mars demo telemetry (clearly labelled) and the clean presentation mode for judges. */
+  settings: { demo: boolean; judge: boolean };
+  /** Daily crew checks, newest last. Private mood stays on the device and out of reports. */
+  checks: { day: string; at: number; mood: number; moodPrivate: boolean; symptoms: string[]; exerciseMin: number; manual: Record<string, number> }[];
+  /** Repeat measurements: metric → latest re-measured value. */
+  remeasure: Record<string, { value: number; at: number; source: string }>;
+  /** Flight-surgeon reports in the store-and-forward queue. */
+  reports: { id: string; title: string; createdAt: number; status: 'draft' | 'queued' | 'sent' | 'ack'; sentAt?: number; ackAt?: number; body: string }[];
+  /** Active solar-particle-event shelter alert. */
+  spe: { startedAt: number; shelterBy: number } | null;
+  /** Face enrolment for crew recognition in camera tools — small grey thumbnails, kept only on this device. */
+  face: { enrolledAt: number; samples: string[] } | null;
 };
 
 const day = (offset = 0) => { const d = new Date(); d.setDate(d.getDate() + offset); return d.toISOString().slice(0, 10); };
@@ -23,6 +37,16 @@ const initial = (): AppState => ({
   profile: { age: '32', gender: 'Prefer not to say', height: '178', weight: '74', duration: '180', missionStart: day(-41) },
   completed: {},
   devices: {},
+  briefing: { dest: 'mars', commDelayMin: 12, evaDates: [day(1), day(9)], crewSize: 4, objective: 'Surface science and habitat assembly' },
+  settings: { demo: true, judge: false },
+  checks: [],
+  remeasure: {},
+  reports: [
+    { id: 'r40', title: 'Day 40 report', createdAt: at(-2, 19, 0), status: 'ack', sentAt: at(-2, 19, 20), ackAt: at(-2, 20, 5), body: '' },
+    { id: 'r41', title: 'Day 41 report', createdAt: at(-1, 19, 0), status: 'queued', body: '' },
+  ],
+  spe: null,
+  face: null,
   chats: [
     { id: 'c-dose', title: 'Reading my dose report', sub: 'Dosimetry report attached', at: at(0, 9, 18), messages: [
       { id: 'm1', role: 'user', text: 'Can you read my dose report?', at: at(0, 9, 17), files: ['dosimeter-nov.pdf'] },
@@ -68,7 +92,7 @@ export async function loadStore() {
   if (loaded) return;
   loaded = true;
   const saved = await read();
-  if (saved) state = { ...initial(), ...saved, profile: { ...initial().profile, ...saved.profile } };
+  if (saved) { const i = initial(); state = { ...i, ...saved, profile: { ...i.profile, ...saved.profile }, settings: { ...i.settings, ...(saved as any).settings }, briefing: { ...i.briefing, ...(saved as any).briefing } }; }
   subs.forEach(f => f());
 }
 

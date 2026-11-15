@@ -4,7 +4,7 @@
  * The ending dissolves into the Welcome screen's own Mars + ship composition, so the cut is invisible:
  * the Welcome route then mounts in place (nav.seamless) and only its title animates in.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Platform, Pressable, useWindowDimensions, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -14,12 +14,16 @@ import { Play, Volume2, VolumeX } from 'lucide-react-native';
 import { A } from '@/theme';
 import { AstraLogo, IMG, RATIO } from '@/astra';
 import { setFlag } from '@/storage';
+import { realWidth, setFullWindow } from '@/DeviceFrame';
 import { nav } from '@/motion';
 import { Txt, haptic } from '@/kit/core';
 
 const native = Platform.OS !== 'web';
 const FILM = require('../assets/intro/intro.mp4');
 const POSTER = require('../assets/intro/poster.jpg');
+// 16:9 cut for Mac / laptop browsers (same film inside an iPhone, with the mission story beside it)
+const FILM_WIDE = require('../assets/intro/intro-wide.mp4');
+const POSTER_WIDE = require('../assets/intro/poster-wide.jpg');
 const DISSOLVE_AT = 0.95; // seconds before the end when the hand-off starts
 
 export default function Intro() {
@@ -27,29 +31,41 @@ export default function Intro() {
   const insets = useSafeAreaInsets();
   const { replay } = useLocalSearchParams<{ replay?: string }>();
   const [ready, setReady] = useState(false);
-  const [muted, setMuted] = useState(!native); // browsers block autoplay with sound
+  const [muted, setMuted] = useState(false); // sound on by default; if the browser refuses, fall back to muted + a clear "sound" button
   const [needsTap, setNeedsTap] = useState(false);
   const progress = useRef(new Animated.Value(0)).current;
   const out = useRef(new Animated.Value(0)).current;      // 0 film → 1 welcome composition
   const chrome = useRef(new Animated.Value(0)).current;   // skip + progress fade in
   const leaving = useRef(false);
 
-  const player = useVideoPlayer(FILM, p => {
+  // desktop web: the film plays across the whole window, the app itself lives in the phone column
+  const [wide] = useState(() => !native && realWidth() / H > 1.2);
+  useLayoutEffect(() => { if (wide) setFullWindow(true); return () => setFullWindow(false); }, []);
+  const player = useVideoPlayer(wide ? FILM_WIDE : FILM, p => {
     p.loop = false;
-    p.muted = !native;
+    p.muted = false;
     p.timeUpdateEventInterval = 0.1;
     p.play();
   });
+  const film = useRef(new Animated.Value(1)).current; // the full-window film fades to the page before the column appears
 
   const finish = (fast = false) => {
     if (leaving.current) return;
     leaving.current = true;
     setFlag('introSeen');
-    Animated.timing(out, { toValue: 1, duration: fast ? 520 : 900, easing: Easing.bezier(0.45, 0, 0.2, 1), useNativeDriver: native }).start(() => {
+    const handOff = () => Animated.timing(out, { toValue: 1, duration: fast ? 520 : 900, easing: Easing.bezier(0.45, 0, 0.2, 1), useNativeDriver: native }).start(() => {
       try { player.pause(); } catch {}
       if (replay) { router.back(); return; }
       nav.seamless();
       router.replace('/welcome');
+    });
+    if (!wide) return handOff();
+    // laptop: film fades out across the window → the column (with the Welcome composition) fades in
+    Animated.timing(film, { toValue: 0, duration: fast ? 360 : 650, easing: Easing.bezier(0.45, 0, 0.2, 1), useNativeDriver: native }).start(() => {
+      try { player.pause(); } catch {}
+      setFullWindow(false);
+      out.setValue(0);
+      requestAnimationFrame(handOff);
     });
   };
 
@@ -71,9 +87,11 @@ export default function Intro() {
       player.addListener('playToEnd', () => finish()),
     ];
     // autoplay can be refused (browser policy, Low Power Mode) → offer a tap to play; never strand the user
-    const blocked = setTimeout(() => { if (!player.playing && player.currentTime === 0) setNeedsTap(true); }, 1800);
+    // sound-on autoplay is often refused by browsers → retry muted, then show the sound button prominently
+    const muteRetry = setTimeout(() => { if (!player.playing && player.currentTime === 0) { player.muted = true; setMuted(true); player.play(); } }, 900);
+    const blocked = setTimeout(() => { if (!player.playing && player.currentTime === 0) setNeedsTap(true); }, 2200);
     const guard = setTimeout(() => { if (player.status !== 'readyToPlay' && player.currentTime === 0) finish(true); }, 12000);
-    return () => { subs.forEach(s => s.remove()); clearTimeout(guard); clearTimeout(blocked); };
+    return () => { subs.forEach(s => s.remove()); clearTimeout(guard); clearTimeout(blocked); clearTimeout(muteRetry); };
   }, [player]);
 
   const toggleSound = () => { haptic.tap(); const m = !muted; setMuted(m); player.muted = m; if (!player.playing) player.play(); };
@@ -82,8 +100,8 @@ export default function Intro() {
   return (
     <View style={{ flex: 1, backgroundColor: '#F7F1EC', overflow: 'hidden' }}>
       {/* poster until the first frame is ready */}
-      {!ready ? <Image source={POSTER} resizeMode="cover" style={{ position: 'absolute', width: W, height: H }} /> : null}
-      <Animated.View style={{ position: 'absolute', width: W, height: H, transform: [{ scale: out.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>
+      {!ready ? <Image source={wide ? POSTER_WIDE : POSTER} resizeMode="cover" style={{ position: 'absolute', width: W, height: H }} /> : null}
+      <Animated.View style={{ position: 'absolute', width: W, height: H, opacity: film, transform: [{ scale: out.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>
         <VideoView player={player} style={{ width: W, height: H }} contentFit="cover" nativeControls={false} allowsPictureInPicture={false} {...({ fullscreenOptions: { enable: false } } as any)} />
       </Animated.View>
 

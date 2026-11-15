@@ -5,6 +5,8 @@ import { Plus } from 'lucide-react-native';
 import { useApi } from '@/useApi';
 import { C, statusColor } from '@/theme';
 import { Button, Card, DotMatrix, Header, Loading, Row, Screen, Segmented, StatusDot, T, useWide } from '@/ui';
+import { PageSkeleton } from '@/kit/ui';
+import { Rise } from '@/kit/core';
 
 export default function MetricDetail() {
   const { key } = useLocalSearchParams<{ key: string }>();
@@ -12,13 +14,14 @@ export default function MetricDetail() {
   const { data, error } = useApi<any>(`/api/metrics/${key}?days=${days}`);
   const wide = useWide();
   if (error) return <Screen><Header title="Metric" back /><T>{error}</T></Screen>;
-  if (!data) return <Screen><Header title="" back /><Loading /></Screen>;
+  if (!data) return <PageSkeleton tabs={false} />;
   const s = data.snapshot, info = data.info;
   const val = s.value == null ? '—' : s.value2 != null ? `${s.value}/${s.value2}` : s.value;
   const manual = ['bp', 'glucose', 'temp', 'weight', 'ntx', 'vitd', 'radiation', 'co2'].includes(key!);
 
   return (
     <Screen bottomSpace={40}>
+      <Rise from={22}>
       <Header title={info.label} back sub={`Source · ${s.source ?? info.source}`} />
       <View style={wide ? { flexDirection: 'row', gap: 24 } : undefined}>
         <View style={wide ? { flex: 1 } : undefined}>
@@ -65,6 +68,7 @@ export default function MetricDetail() {
           </Card>
         </View>
       </View>
+      </Rise>
     </Screen>
   );
 }

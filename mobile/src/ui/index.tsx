@@ -186,7 +186,7 @@ export function Logo({ color = C.ink, size = 22 }: { color?: string; size?: numb
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Path fill="#B8693F" d="M12 1.5C12.9 8 16 11.1 22.5 12 16 12.9 12.9 16 12 22.5 11.1 16 8 12.9 1.5 12 8 11.1 11.1 8 12 1.5Z" />
       </Svg>
-      <T size={size * 0.95} weight="sb" color={color} style={{ letterSpacing: 1.2 }}>ASTRA</T>
+      <T size={size * 0.95} weight="sb" color={color} style={{ letterSpacing: 1.2 }}>CELESTE</T>
     </Row>
   );
 }

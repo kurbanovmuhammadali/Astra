@@ -109,7 +109,9 @@ app.post('/api/auth/code', (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const purpose = req.body?.purpose === 'login' ? 'login' : 'signup';
   if (!EMAIL_RE.test(email)) return bad(res, 'Please enter a valid email.');
-  if (!rateLimit(`code:${req.ip}`, 10, 15 * 60e3) || !rateLimit(`code:${email}`, 5, 15 * 60e3)) return bad(res, 'Too many codes requested. Wait a few minutes.', 429);
+  // the shared demo crew account is used by many judges at once → no per-email cap for it (per-IP limit still applies)
+  const demo = email.toLowerCase() === DEMO_EMAIL;
+  if (!rateLimit(`code:${req.ip}`, demo ? 30 : 10, 15 * 60e3) || (!demo && !rateLimit(`code:${email}`, 5, 15 * 60e3))) return bad(res, 'Too many codes requested. Wait a few minutes.', 429);
   const exists = !!db.prepare('SELECT 1 FROM users WHERE email = ?').get(email);
   if (purpose === 'signup' && exists) return bad(res, 'This email already has an account. Use Log in instead.', 409);
   if (purpose === 'login' && !exists) return bad(res, 'We could not find a crew account for this email.', 404);
@@ -137,19 +139,29 @@ app.post('/api/auth/code/verify', (req, res) => {
     return authResponse(req, res, db.prepare('SELECT * FROM users WHERE email = ?').get(email));
   }
 
-  const { firstName, lastName, age, missionYears, acceptTerms } = req.body?.profile ?? {};
+  const { firstName, lastName, age, missionYears, acceptTerms, heightCm, weightKg, missionGoal } = req.body?.profile ?? {};
   const name = `${String(firstName || '').trim()} ${String(lastName || '').trim()}`.trim();
   const a = Number(age), y = Number(missionYears);
   if (String(firstName || '').trim().length < 1 || String(lastName || '').trim().length < 1) return bad(res, 'Please enter your name and surname.');
   if (!Number.isInteger(a) || a < MIN_AGE || a > 100) return bad(res, `Age must be between ${MIN_AGE} and 100.`);
   if (!(y >= 0.5 && y <= 10) || (y * 2) % 1 !== 0) return bad(res, 'Mission length must be 0.5–10 years in half-year steps.');
   if (!acceptTerms) return bad(res, 'You need to accept the Terms and Privacy Policy.');
+  // body measurements and mission goal are optional (older app versions don't send them)
+  const h = heightCm == null ? null : Number(heightCm), w = weightKg == null ? null : Number(weightKg);
+  if (h != null && !(h >= 120 && h <= 230)) return bad(res, 'Height must be between 120 and 230 cm.');
+  if (w != null && !(w >= 30 && w <= 250)) return bad(res, 'Weight must be between 30 and 250 kg.');
+  const GOAL_DESTS = ['iss', 'moon', 'mars', 'jupiter', 'deep'], GOAL_TASKS = ['repair', 'science', 'assembly', 'eva', 'piloting', 'medical', 'surface'];
+  const goal = missionGoal && typeof missionGoal === 'object' ? {
+    dest: GOAL_DESTS.includes(missionGoal.dest) ? missionGoal.dest : null,
+    tasks: Array.isArray(missionGoal.tasks) ? [...new Set(missionGoal.tasks.filter(t => GOAL_TASKS.includes(t)))] : [],
+  } : null;
+  const goalJson = goal && (goal.dest || goal.tasks.length) ? JSON.stringify(goal) : null;
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return bad(res, 'This email already has an account.', 409);
   const dob = `${new Date().getUTCFullYear() - a}-01-01`; // only age is collected; store an approximate birth date
   const user = tx(() => {
     db.prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?').run(email, purpose);
-    const { lastInsertRowid: id } = db.prepare('INSERT INTO users (email, name, password_hash, dob, role, mission, environment, mission_years) VALUES (?,?,?,?,?,?,?,?)')
-      .run(email, name.slice(0, 80), '!', dob, 'astronaut', `${y}-year mission`, envForYears(y), y);
+    const { lastInsertRowid: id } = db.prepare('INSERT INTO users (email, name, password_hash, dob, role, mission, environment, mission_years, height_cm, weight_kg, mission_goal) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(email, name.slice(0, 80), '!', dob, 'astronaut', `${y}-year mission`, envForYears(y), y, h, w, goalJson);
     const c = db.prepare('INSERT INTO consents (user_id, kind, version) VALUES (?,?,?)');
     ['terms', 'privacy', 'health_data'].forEach(k => c.run(id, k, LEGAL_VERSION));
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);

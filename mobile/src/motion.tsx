@@ -31,7 +31,8 @@ export const nav = {
 
 const FocusTick = createContext(0);
 
-export function MotionScreen({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+/** `still`: fade only, no sideways slide (screens whose own entrance already moves, like Welcome). */
+export function MotionScreen({ children, style, still }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; still?: boolean }) {
   const p = useRef(new Animated.Value(1)).current; // -1 off to the left · 0 on screen · 1 off to the right
   const [tick, setTick] = useState(0);
   const busy = useRef(false);
@@ -53,7 +54,7 @@ export function MotionScreen({ children, style }: { children: React.ReactNode; s
   }, []));
   return (
     <FocusTick.Provider value={tick}>
-      <Animated.View style={[{ flex: 1, opacity: p.interpolate({ inputRange: [-1, 0, 1], outputRange: [0, 1, 0] }), transform: [{ translateX: p.interpolate({ inputRange: [-1, 0, 1], outputRange: [-48, 0, 48] }) }] }, style]}>
+      <Animated.View style={[{ flex: 1, opacity: p.interpolate({ inputRange: [-1, 0, 1], outputRange: [0, 1, 0] }), transform: [{ translateX: still ? 0 : p.interpolate({ inputRange: [-1, 0, 1], outputRange: [-48, 0, 48] }) }] }, style]}>
         {children}
       </Animated.View>
     </FocusTick.Provider>

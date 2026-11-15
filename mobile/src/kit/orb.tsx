@@ -1,5 +1,5 @@
 /**
- * The Astra orbit — a copper-and-champagne orb with precessing orbit lines.
+ * The Celeste orbit — a copper-and-champagne orb with precessing orbit lines.
  * ready: slow orbit and breath · listening: tight fast pulse · speaking: wider pulse, rings swell.
  * Also the copper microphone badge with listening ripples.
  */
@@ -49,7 +49,7 @@ export function AstraOrb({ size = 220, state = 'ready' }: { size?: number; state
   const id = useMemo(() => Math.random().toString(36).slice(2, 7), []);
 
   return (
-    <View style={{ width: size * 1.3, height: size * 1.3, alignItems: 'center', justifyContent: 'center' }} accessibilityRole="image" accessibilityLabel={`Astra is ${state}`}>
+    <View style={{ width: size * 1.3, height: size * 1.3, alignItems: 'center', justifyContent: 'center' }} accessibilityRole="image" accessibilityLabel={`Celeste is ${state}`}>
       {/* halo */}
       <Animated.View style={{ position: 'absolute', width: size * 1.3, height: size * 1.3, opacity: glow.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.55, 1, 0.55] }),
         transform: [{ scale: breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1 + ampScale * 2.2] }) }] }}>
@@ -110,7 +110,7 @@ export function MicBadge({ listening, onPress, size = 72 }: { listening?: boolea
       opacity: listening ? v.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }) : 0, transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.7] }) }] }} />
   );
   return (
-    <Pressy onPress={onPress} label={listening ? 'Stop listening' : 'Talk to Astra'} to={0.9}>
+    <Pressy onPress={onPress} label={listening ? 'Stop listening' : 'Talk to Celeste'} to={0.9}>
       <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
         {ripple(a)}{ripple(b)}
         <View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: listening ? K.copperDeep : K.copper, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: 'rgba(255,255,255,0.7)' }, ELEV.copper]}>

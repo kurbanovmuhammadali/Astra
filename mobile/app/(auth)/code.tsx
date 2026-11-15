@@ -4,6 +4,7 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 import { A, F } from '@/theme';
 import { T } from '@/ui';
 import { Floaty, FormShell, IMG, RATIO, focusSoon, thud, tick } from '@/astra';
+import { setStore } from '@/data/store';
 import { useDraft } from '@/onboarding';
 import { useAuth, type CodePurpose } from '@/auth';
 import { EASE_OUT, nav, native, useEntrance } from '@/motion';
@@ -70,8 +71,9 @@ export default function Code() {
   const verify = async (c: string) => {
     setBusy(true); setErr(null);
     try {
-      const profile = purpose === 'signup' ? { firstName: d.firstName, lastName: d.lastName, age: d.age, missionYears: d.missionYears, acceptTerms: d.acceptTerms } : undefined;
+      const profile = purpose === 'signup' ? { firstName: d.firstName, lastName: d.lastName, age: d.age, heightCm: d.heightCm, weightKg: d.weightKg, missionYears: d.missionYears, missionGoal: d.goalDest || d.goalTasks.length ? { dest: d.goalDest, tasks: d.goalTasks } : null, acceptTerms: d.acceptTerms } : undefined;
       await verifyCode(d.email.trim(), purpose, c, profile);
+      if (purpose === 'signup') setStore(st => ({ ...st, profile: { ...st.profile, age: String(d.age), height: String(d.heightCm), weight: String(d.weightKg) } }));
       thud();
       await new Promise<void>(res => Animated.parallel([
         Animated.timing(success, { toValue: 1, duration: 700, easing: EASE_OUT, useNativeDriver: false }),
@@ -79,7 +81,7 @@ export default function Code() {
       ]).start(() => res()));
       // (the draft is cleared by the next sign-up's "Get started"; clearing it here would trip this screen's redirect guard)
       if (purpose === 'login') nav.replace('/today');
-      else nav.replace('/done');
+      else nav.replace('/face');
     } catch (e: any) {
       setErr(e.message); setCode('');
       Animated.sequence([12, -11, 8, -5, 0].map(v => Animated.timing(shake, { toValue: v, duration: 55, useNativeDriver: native }))).start();
@@ -98,7 +100,7 @@ export default function Code() {
   };
 
   return (
-    <FormShell step={purpose === 'signup' ? 5 : undefined} title="Check your email" onBack={() => nav.back(purpose === 'login' ? '/login' : '/email')}
+    <FormShell step={purpose === 'signup' ? 6 : undefined} title="Check your email" onBack={() => nav.back(purpose === 'login' ? '/login' : '/email')}
       onNext={() => verify(code)} nextDisabled={code.length < 4} nextLoading={busy} nextLabel="Verify">
       <Animated.View style={{ alignSelf: 'center', marginTop: 18,
         opacity: drop.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 1, 1] }),

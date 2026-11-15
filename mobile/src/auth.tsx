@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, setToken } from './api';
 
-export type User = { id: number; name: string; email: string; dob: string; role: string; mission: string; environment: string; missionYears: number | null; passwordless: boolean; createdAt: string };
+export type User = { id: number; name: string; email: string; dob: string; role: string; mission: string; environment: string; missionYears: number | null; heightCm?: number | null; weightKg?: number | null; missionGoal?: { dest: string | null; tasks: string[] } | null; passwordless: boolean; createdAt: string };
 export type CodePurpose = 'signup' | 'login';
 type Ctx = {
   user: User | null; ready: boolean;

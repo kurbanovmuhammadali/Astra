@@ -2,19 +2,20 @@
  * Copper Horizon components: cards, chips, steppers, list groups, buttons, status, skeletons, toasts and sheets.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Modal, Pressable, ScrollView, StyleProp, View, ViewStyle, LayoutChangeEvent } from 'react-native';
+import { ActivityIndicator, Animated, Modal, Pressable, ScrollView, StyleProp, View, ViewStyle, LayoutChangeEvent, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { ELEV, K, MOTION, RAD, native, toneColor, web } from './tokens';
 import { Kicker, Pressy, Txt, haptic, useLoop } from './core';
+import { goBack } from './transition';
 
 // ----------------------------------------------------------------------------- card
 export function Card({ children, style, onPress, pad = 16, label, sunk, solid }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; pad?: number; label?: string; sunk?: boolean; solid?: boolean }) {
   const body = (
-    <View style={[{ backgroundColor: sunk ? K.cardSunk : solid ? K.cardSolid : K.card, borderRadius: RAD.m, padding: pad, borderWidth: 1, borderColor: K.hair },
-      !sunk && ELEV.card, web && !sunk ? ({ backdropFilter: 'blur(18px)' } as any) : null, style]}>{children}</View>
+    <View style={[{ backgroundColor: sunk ? K.cardSunk : solid ? K.cardSolid : web ? 'rgba(255,253,251,0.9)' : K.card, borderRadius: RAD.m, padding: pad, borderWidth: 1, borderColor: K.hair },
+      !sunk && ELEV.card, style]}>{children}</View>
   );
   return onPress ? <Pressy onPress={onPress} label={label} to={0.975}>{body}</Pressy> : body;
 }
@@ -127,7 +128,7 @@ export function Stepper({ label, onPrev, onNext, prevDisabled, nextDisabled, sty
 export function TopBar({ title, back = true, right, onBack }: { title: string; back?: boolean; right?: React.ReactNode; onBack?: () => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 40 }}>
-      <Pressy label={back ? `Back · ${title}` : title} disabled={!back} hapticOn={back} onPress={() => (onBack ? onBack() : router.canGoBack() ? router.back() : router.replace('/today'))}>
+      <Pressy label={back ? `Back · ${title}` : title} disabled={!back} hapticOn={back} onPress={() => (onBack ? onBack() : goBack('/today'))}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, paddingRight: 8 }}>
           {back ? <ChevronLeft size={21} color={K.ink} strokeWidth={2} style={{ marginLeft: -6 }} /> : null}
           <Txt v="headline">{title}</Txt>
@@ -244,6 +245,9 @@ export function Skeleton({ w = '100%', h = 16, r = 8, style }: { w?: number | `$
   );
 }
 
+// page-shaped loading skeletons live in ./skeletons
+export { PageSkeleton, BootSkeleton, skeletonKind } from './skeletons';
+
 // ----------------------------------------------------------------------------- toast
 type ToastMsg = { id: number; text: string };
 let pushToast: (t: string) => void = () => {};
@@ -278,6 +282,7 @@ export function ToastHost() {
 /** Bottom sheet with a dimmed backdrop and spring. Centred card on wide screens. */
 export function Sheet({ open, onClose, title, kicker, children }: { open: boolean; onClose: () => void; title: string; kicker?: string; children: React.ReactNode }) {
   const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions(); // laptop template: never wider than the phone column
   const a = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(open);
   useEffect(() => {
@@ -291,7 +296,7 @@ export function Sheet({ open, onClose, title, kicker, children }: { open: boolea
         <Animated.View style={{ flex: 1, backgroundColor: 'rgba(43,30,24,0.35)', opacity: a }} />
       </Pressable>
       <Animated.View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', transform: [{ translateY: a.interpolate({ inputRange: [0, 1], outputRange: [420, 0] }) }] }}>
-        <View style={[{ width: '100%', maxWidth: 520, backgroundColor: '#FFFAF7', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 22, paddingBottom: insets.bottom + 22 }, ELEV.float]}>
+        <View style={[{ width: '100%', maxWidth: Math.min(520, winW), backgroundColor: '#FFFAF7', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 22, paddingBottom: insets.bottom + 22 }, ELEV.float]}>
           <View style={{ alignSelf: 'center', width: 38, height: 5, borderRadius: 3, backgroundColor: K.ink4, marginBottom: 14, marginTop: -8 }} />
           {kicker ? <Kicker>{kicker}</Kicker> : null}
           <Txt v="title" style={{ marginTop: 4, marginBottom: 12 }}>{title}</Txt>

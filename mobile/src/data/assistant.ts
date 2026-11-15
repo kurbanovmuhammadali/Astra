@@ -1,5 +1,5 @@
 /**
- * Astra assistant brain. Today: on-device demo replies grounded in the crew's own numbers.
+ * Celeste assistant brain. Today: on-device demo replies grounded in the crew's own numbers.
  * Later: set ASSISTANT_PROVIDER to a server route (e.g. Gemini) — screens call `ask()` and stay unchanged.
  */
 import { api } from '../api';
@@ -34,7 +34,7 @@ function demoReply(q: string, c: AssistantContext, files?: string[]): string {
   if (/mission|day|how long/.test(s))
     return `Today is mission day ${c.missionDay} of ${c.duration}. You’re ${Math.round((c.missionDay / c.duration) * 100)}% of the way through.`;
   if (/^(hi|hello|hey|привет)/.test(s)) return `Hi ${first}. Ask me about your sleep, recovery, radiation dose or today’s training.`;
-  return `I can help with your sleep, recovery, heart signals, radiation dose and training plan. In this demo my answers come from your Astra data; full conversation arrives when the assistant is connected.`;
+  return `I can help with your sleep, recovery, heart signals, radiation dose and training plan. In this demo my answers come from your Celeste data; full conversation arrives when the assistant is connected.`;
 }
 
 export async function ask(history: ChatMsg[], ctx: AssistantContext): Promise<string> {

@@ -24,7 +24,7 @@ export default function History() {
       right={<Txt v="mono" color={K.ink3}>{c.at >= startOfToday() ? new Date(c.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : new Date(c.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Txt>} />
   );
   return (
-    <Page title="Chat history" maxWidth={720} header={<TopBar title="Astra Assistant" right={<Tag label="New chat" icon={Plus} onPress={fresh} />} />} footer={<Button title="New conversation" icon={Plus} onPress={fresh} />}>
+    <Page title="Chat history" maxWidth={720} header={<TopBar title="Celeste Assistant" right={<Tag label="New chat" icon={Plus} onPress={fresh} />} />} footer={<Button title="New conversation" icon={Plus} onPress={fresh} />}>
       <PageHead kicker="Conversations" title="Chat history" style={{ marginTop: 6 }} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, height: 46, borderRadius: 23, paddingHorizontal: 16, backgroundColor: K.cardSolid, borderWidth: 1, borderColor: K.hair2 }}>
         <Search size={17} color={K.ink3} />

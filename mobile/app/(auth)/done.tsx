@@ -8,7 +8,7 @@ import { A } from '@/theme';
 import { T } from '@/ui';
 import { Floaty, IMG, Pill, RATIO } from '@/astra';
 import { useAuth } from '@/auth';
-import { DEST_LABEL, destinationFor, draft } from '@/onboarding';
+import { draft } from '@/onboarding';
 
 export default function Done() {
   const { user } = useAuth();
@@ -31,7 +31,7 @@ export default function Done() {
         <Reveal i={3}>
           <T size={38} weight="sb" color="#fff" style={{ letterSpacing: -1, lineHeight: 42 }}>{`Welcome aboard,\n${first}.`}</T>
           <T size={15.5} color="rgba(255,255,255,0.88)" style={{ marginTop: 10, lineHeight: 22 }}>
-            {years ? `Your ${years}-year mission profile (${DEST_LABEL[destinationFor(years)].toLowerCase()}) is ready. ` : ''}Let’s look after you up there.
+            {years ? `Your ${years}-year mission profile is ready. ` : ''}Let’s look after you up there.
           </T>
         </Reveal>
         <Reveal i={5} from={30} style={{ marginTop: 28 }}>

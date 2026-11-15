@@ -20,7 +20,7 @@ export default function Privacy() {
   const exportData = async () => {
     if (Platform.OS === 'web') { window.open(`${API_URL}/api/account/export`, '_blank'); return; }
     const data = await api('/api/account/export');
-    await Share.share({ title: 'Astra export', message: JSON.stringify(data, null, 2) });
+    await Share.share({ title: 'Celeste export', message: JSON.stringify(data, null, 2) });
   };
   const deleteAccount = async () => {
     setBusy(true);

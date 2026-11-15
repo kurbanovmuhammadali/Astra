@@ -26,8 +26,8 @@ export default function Welcome() {
   const shipW = Math.min(W * 0.78, 420);
 
   return (
-    <View style={{ flex: 1, backgroundColor: A.sand }}>
-      <MotionScreen>
+    <View style={{ flex: 1, backgroundColor: A.sand, overflow: 'hidden' }}>
+      <MotionScreen still>
       <Image source={IMG.mars} resizeMode="cover" style={{ position: 'absolute', top: 0, left: 0, width: W, height: H * 0.72 }} />
       <LinearGradient colors={['rgba(248,238,232,0)', 'rgba(248,238,232,0.55)', A.sand]} locations={[0.35, 0.62, 0.9]} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: H * 0.72 }} />
       <Floaty amp={7} dur={3600} rotate={1.5} style={{ position: 'absolute', top: H * 0.1, right: -shipW * 0.12 }}>
@@ -39,9 +39,8 @@ export default function Welcome() {
       <View style={{ flex: 1, justifyContent: 'flex-end', paddingHorizontal: 24, paddingBottom: insets.bottom + 34, width: '100%', maxWidth: 520, alignSelf: 'center' }}>
         <Animated.View style={{ opacity: a, transform: [
           { translateY: Animated.add(a.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }), b.interpolate({ inputRange: [0, 1], outputRange: [150, 0] })) },
-          { scale: b.interpolate({ inputRange: [0, 1], outputRange: [1.12, 1] }) },
         ] }}>
-          <T size={40} weight="sb" color={A.ink} style={{ letterSpacing: -1.2, lineHeight: 44 }}>{'Welcome to\nASTRA'}</T>
+          <T size={40} weight="sb" color={A.ink} style={{ letterSpacing: -1.2, lineHeight: 44 }}>{'Welcome to\nCELESTE'}</T>
           <T size={15.5} color={A.ink2} style={{ marginTop: 10, lineHeight: 22 }}>Your health companion for life beyond Earth.</T>
         </Animated.View>
 

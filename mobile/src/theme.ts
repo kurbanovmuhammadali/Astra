@@ -25,7 +25,7 @@ export const C = {
   copper: '#B8693F',
 };
 
-/** Astra "Copper Horizon" palette — sampled from the gradient / Mars references. */
+/** Celeste "Copper Horizon" palette — sampled from the gradient / Mars references. */
 export const A = {
   sand: '#F8EEE8',
   sand2: '#F2E2D9',

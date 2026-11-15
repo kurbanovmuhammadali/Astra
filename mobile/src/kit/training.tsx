@@ -29,7 +29,7 @@ export function SessionHero({ s, kicker, onPress, height = 190, done, minimal }:
   );
   const card = (
     <View style={[{ height, borderRadius: RAD.l, overflow: 'hidden', backgroundColor: K.cocoa }, ELEV.float]}>
-      {s.img ? <ImageBackground source={s.img} resizeMode="cover" style={{ flex: 1 }}>{inner}</ImageBackground>
+      {s.img ? <ImageBackground source={s.img} resizeMode="cover" style={{ flex: 1 }} imageStyle={{ width: '100%', height: '100%' }}>{inner}</ImageBackground>
         : <LinearGradient colors={['#C98257', '#8E4A2A', '#3A2A22']} style={{ flex: 1 }}>{inner}</LinearGradient>}
     </View>
   );
@@ -42,7 +42,7 @@ export function SessionRow({ s, right, onPress }: { s: Session; right?: React.Re
     <Pressy onPress={onPress} label={s.title} to={0.985}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10 }}>
         <View style={{ width: 56, height: 56, borderRadius: 16, overflow: 'hidden', backgroundColor: K.copperTint, alignItems: 'center', justifyContent: 'center' }}>
-          {s.img ? <Image source={s.img} style={{ width: 56, height: 56 }} resizeMode="cover" /> : <Icon size={22} color={K.copper} />}
+          {s.img ? <Image source={s.thumb ?? s.img} style={{ width: 56, height: 56 }} resizeMode="cover" /> : <Icon size={22} color={K.copper} />}
         </View>
         <View style={{ flex: 1 }}>
           <Txt v="bodyM">{s.title}</Txt>

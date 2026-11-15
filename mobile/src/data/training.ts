@@ -7,19 +7,21 @@ import { dayKey, getStore, setStore, todayKey } from './store';
 export type Phase = { id: string; title: string; sub: string; min: number; group: 'Warm-up' | 'Main session' | 'Cool-down'; target?: string };
 export type Session = {
   id: string; title: string; device: string; category: 'aerobic' | 'resistance' | 'mobility'; kind: string; minutes: number;
-  img: any | null; credit?: string; muscles: string[]; blurb: string; phases: Phase[];
+  img: any | null; imgFocus?: any; thumb?: any; credit?: string; muscles: string[]; blurb: string; phases: Phase[];
 };
 
 export const IMG_TRAINING = {
-  cevis: require('../../assets/training/cevis.jpg'),
+  cevis: require('../../assets/training/cycle-banner.jpg'),
+  cevisFocus: require('../../assets/training/cycle-focus.jpg'),
+  cevisThumb: require('../../assets/training/cycle-thumb.jpg'),
   ared: require('../../assets/training/ared.jpg'),
   treadmill: require('../../assets/training/treadmill.jpg'),
 };
 
 export const SESSIONS: Session[] = [
   {
-    id: 'station-cycle', title: 'Station cycle', device: 'CEVIS', category: 'aerobic', kind: 'Aerobic block', minutes: 32, img: IMG_TRAINING.cevis,
-    credit: 'NASA · iss072e034702', muscles: ['Quads', 'Glutes', 'Calves'],
+    id: 'station-cycle', title: 'Station cycle', device: 'CEVIS', category: 'aerobic', kind: 'Aerobic block', minutes: 32, img: IMG_TRAINING.cevis, imgFocus: IMG_TRAINING.cevisFocus, thumb: IMG_TRAINING.cevisThumb,
+    muscles: ['Quads', 'Glutes', 'Calves'],
     blurb: 'A steady cycling session from the crew exercise plan. Keeps your heart and legs conditioned for gravity.',
     phases: [
       { id: 'p1', title: 'Easy spin', sub: 'Prepare for the main block', min: 4, group: 'Warm-up' },

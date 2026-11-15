@@ -81,9 +81,12 @@ export function requireAuth(req, res, next) {
   next();
 }
 
+const parseGoal = s => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
+
 export const publicUser = u => ({
   id: u.id, email: u.email, name: u.name, dob: u.dob, role: u.role, mission: u.mission,
-  environment: u.environment, missionYears: u.mission_years ?? null, passwordless: u.password_hash === '!', createdAt: u.created_at,
+  environment: u.environment, missionYears: u.mission_years ?? null,
+  heightCm: u.height_cm ?? null, weightKg: u.weight_kg ?? null, missionGoal: parseGoal(u.mission_goal), passwordless: u.password_hash === '!', createdAt: u.created_at,
 });
 
 // --- simple in-memory rate limiter -------------------------------------------------

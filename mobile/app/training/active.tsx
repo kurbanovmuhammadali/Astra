@@ -12,6 +12,7 @@ import { Page } from '@/kit/page';
 import { StatPair, deviceIcon, fmtClock } from '@/kit/training';
 import { completeSession, sessionById } from '@/data/training';
 import { Star } from '@/astra';
+import { goBack } from '@/kit/transition';
 
 function Ring({ f, size = 132 }: { f: number; size?: number }) {
   const r = size / 2 - 8, c = 2 * Math.PI * r;
@@ -89,7 +90,7 @@ export default function Active() {
   if (done) {
     return (
       <Page title="Complete" maxWidth={560} header={<TopBar title={s.title} back={false} right={<Tag label="Complete" tone="ok" />} />}
-        footer={<Button title="Back to training" onPress={() => router.dismissTo('/plan')} />}>
+        footer={<Button title="Back to training" onPress={() => router.dismissTo('/hazards?tab=training')} />}>
         <View style={{ alignItems: 'center', marginTop: 30 }}>
           <Burst />
           <Pop><View style={[{ width: 120, height: 120, borderRadius: 60, backgroundColor: K.copper, alignItems: 'center', justifyContent: 'center' }, ELEV.copper]}><Check size={54} color="#fff" strokeWidth={2.4} /></View></Pop>
@@ -99,17 +100,17 @@ export default function Active() {
         </View>
         <View style={{ marginTop: 26 }}><StatPair items={[[fmtClock(elapsed), 'Active time'], [`${s.phases.length}/${s.phases.length}`, 'Phases'], ['118 bpm', 'Avg HR · sample']]} /></View>
         <Card sunk style={{ marginTop: 14 }}>
-          <View style={{ flexDirection: 'row', gap: 10 }}><Sparkles size={16} color={K.copper} /><Txt v="caption" color={K.ink2} style={{ flex: 1 }}>Astra will compare tonight’s recovery with this session. Log how it felt in a crew check-in.</Txt></View>
+          <View style={{ flexDirection: 'row', gap: 10 }}><Sparkles size={16} color={K.copper} /><Txt v="caption" color={K.ink2} style={{ flex: 1 }}>Celeste will compare tonight’s recovery with this session. Log how it felt in a crew check-in.</Txt></View>
         </Card>
       </Page>
     );
   }
 
   return (
-    <Page title={s.title} maxWidth={620} header={<TopBar title={s.title} onBack={() => router.back()} right={<Tag label={running ? 'In progress' : 'Paused'} tone={running ? 'ok' : 'watch'} />} />}
+    <Page title={s.title} maxWidth={620} header={<TopBar title={s.title} onBack={() => goBack()} right={<Tag label={running ? 'In progress' : 'Paused'} tone={running ? 'ok' : 'watch'} />} />}
       footer={
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Button kind="secondary" title="End" icon={Square} style={{ flex: 0.7 }} onPress={() => router.back()} />
+          <Button kind="secondary" title="End" icon={Square} style={{ flex: 0.7 }} onPress={() => goBack()} />
           <Button title={running ? 'Pause workout' : 'Resume workout'} icon={running ? Pause : Play} style={{ flex: 1.3 }} onPress={() => { haptic.firm(); setRunning(r => !r); }} />
         </View>
       }>

@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, PanResponder, View } from 'react-native';
 import Svg, { Circle, Defs, G, Line, LinearGradient as SvgGrad, Path, Rect, Stop } from 'react-native-svg';
 import { K, MOTION, toneColor } from './tokens';
-import { Txt, haptic, useFocusTick, useTween } from './core';
+import { Txt, haptic, useFocusTick, useInView, useTween } from './core';
 
 /** Smooth path through points (Catmull-Rom → cubic Bézier). */
 export function smooth(pts: [number, number][], t = 0.18) {
@@ -22,17 +22,22 @@ export function smooth(pts: [number, number][], t = 0.18) {
 }
 
 /** Wipes its children in from the left whenever the screen gains focus. */
+/** Draws a chart left → right the first time it scrolls into view. */
 function Wipe({ width, height, children, delay = 120 }: { width: number; height: number; children: React.ReactNode; delay?: number }) {
   const tick = useFocusTick();
+  const [ref, seen] = useInView();
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (!seen) return;
     a.setValue(0);
     Animated.timing(a, { toValue: 1, duration: 1100, delay, easing: MOTION.out, useNativeDriver: false }).start();
-  }, [tick, width]);
+  }, [tick, width, seen]);
   return (
-    <Animated.View style={{ width: a.interpolate({ inputRange: [0, 1], outputRange: [0, width] }), height, overflow: 'hidden' }}>
-      <View style={{ width, height }}>{children}</View>
-    </Animated.View>
+    <View ref={ref} collapsable={false} style={{ width, height }}>
+      <Animated.View style={{ width: a.interpolate({ inputRange: [0, 1], outputRange: [0, width] }), height, overflow: 'hidden' }}>
+        <View style={{ width, height }}>{children}</View>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -133,9 +138,12 @@ export function LineChart({ values, labels, band, height = 132, color = K.copper
         </View>
       ) : <View style={{ height: H }} />}
       {labels?.length ? (
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, paddingHorizontal: 2 }}>
-          <Txt v="mono" color={K.ink3}>{labels[0]}</Txt>
-          <Txt v="mono" color={K.ink3}>{labels[labels.length - 1]}</Txt>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+          {labels.map((l, i) => {
+            const every = Math.ceil(labels.length / 7);
+            const show = i % every === 0 || i === labels.length - 1;
+            return <Txt key={i} v="mono" color={K.ink3} center style={{ fontSize: 9.5, width: 34, marginHorizontal: -8, opacity: show ? 1 : 0 }}>{l.replace(/^[A-Za-z]{3} /, '')}</Txt>;
+          })}
         </View>
       ) : null}
     </View>
@@ -174,20 +182,20 @@ export function Gauge({ value, size = 210, label = 'Recovery', sub }: { value: n
 }
 
 /** Workout frequency grid: weeks as rows, days as columns, intensity by count. Cells pop in with a wave. */
-export function HeatGrid({ weeks, onPick }: { weeks: number[][]; onPick?: (w: number, d: number) => void }) {
+export function HeatGrid({ weeks, onPick, compact }: { weeks: number[][]; onPick?: (w: number, d: number) => void; compact?: boolean }) {
   const tick = useFocusTick();
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => { a.setValue(0); Animated.timing(a, { toValue: 1, duration: 1100, delay: 150, easing: MOTION.out, useNativeDriver: true }).start(); }, [tick]);
   const shade = (n: number) => (n <= 0 ? 'rgba(227,183,158,0.25)' : n === 1 ? '#E9B795' : n === 2 ? '#C98257' : '#8E4A2A');
   const total = weeks.length * 7;
   return (
-    <View style={{ gap: 4 }}>
+    <View style={{ gap: compact ? 3 : 4 }}>
       {weeks.map((row, wi) => (
-        <View key={wi} style={{ flexDirection: 'row', gap: 4 }}>
+        <View key={wi} style={{ flexDirection: 'row', gap: compact ? 3 : 4 }}>
           {row.map((n, di) => {
             const k = (wi * 7 + di) / total;
             return (
-              <Animated.View key={di} style={{ flex: 1, aspectRatio: 2.3, borderRadius: 4, backgroundColor: shade(n),
+              <Animated.View key={di} style={{ flex: 1, ...(compact ? { height: 8, borderRadius: 2.5 } : { aspectRatio: 2.3, borderRadius: 4 }), backgroundColor: shade(n),
                 opacity: a.interpolate({ inputRange: [Math.max(0, k - 0.15), Math.min(1, k + 0.25)], outputRange: [0, 1], extrapolate: 'clamp' }),
                 transform: [{ scale: a.interpolate({ inputRange: [Math.max(0, k - 0.15), Math.min(1, k + 0.25)], outputRange: [0.4, 1], extrapolate: 'clamp' }) }] }}
                 onTouchEnd={() => onPick?.(wi, di)} />
@@ -195,11 +203,11 @@ export function HeatGrid({ weeks, onPick }: { weeks: number[][]; onPick?: (w: nu
           })}
         </View>
       ))}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+      {compact ? null : <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
         <Txt v="mono" color={K.ink3}>0 sessions</Txt>
         <View style={{ flexDirection: 'row', gap: 4 }}>{[0, 1, 2, 3].map(n => <View key={n} style={{ width: 12, height: 8, borderRadius: 3, backgroundColor: shade(n) }} />)}</View>
         <Txt v="mono" color={K.ink3}>3+</Txt>
-      </View>
+      </View>}
     </View>
   );
 }

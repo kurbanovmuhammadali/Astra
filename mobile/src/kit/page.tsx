@@ -2,14 +2,17 @@
  * Page shell for every crew screen: warm living background, safe areas, focus-replayed staggered entrance,
  * a compact blurred title bar that fades in on scroll, and responsive widths (phone → desktop web).
  */
-import React, { useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { Animated, RefreshControl, StyleProp, View, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { K, native } from './tokens';
-import { FocusReplay, Rise, Txt, useLayout, useLoop } from './core';
+import { usePageMotion } from './pageMotion';
+import { FocusReplay, Rise, ScrollBus, Txt, makeScrollBus, useLayout, useLoop } from './core';
+import { Sidebar } from './sidebar';
 
 function Glow({ size, color, opacity }: { size: number; color: string; opacity: number }) {
   const id = React.useMemo(() => 'g' + Math.random().toString(36).slice(2, 7), []);
@@ -57,6 +60,10 @@ export function Page({ children, title, header, footer, tabs, maxWidth = 1180, s
   const insets = useSafeAreaInsets();
   const { gutter, sidebar } = useLayout();
   const y = useRef(new Animated.Value(0)).current;
+  const bus = useRef(makeScrollBus()).current;
+  const scrollRef = useRef<any>(null);
+  // page-level motion (web): see ./transition and ./pageMotion
+  const motion = usePageMotion({ tabs, onBlur: () => { try { scrollRef.current?.scrollTo({ y: 0, animated: false }); } catch {} } });
   const [refreshing, setRefreshing] = React.useState(false);
   const bottom = (tabs && !sidebar ? 110 : 32) + insets.bottom + (footer ? 84 : 0);
   const top = insets.top + (sidebar ? 26 : 10);
@@ -64,17 +71,17 @@ export function Page({ children, title, header, footer, tabs, maxWidth = 1180, s
   const body = stagger ? kids.map((c, i) => <Rise key={i} i={i}>{c}</Rise>) : kids;
   const wrap: ViewStyle = { width: '100%', maxWidth, alignSelf: 'center', paddingHorizontal: gutter };
 
-  return (
-    <FocusReplay>
+  const page = (
       <View style={{ flex: 1, backgroundColor: K.canvas }}>
         <Backdrop />
         {header ? <View style={[wrap, { paddingTop: top, paddingBottom: 6, zIndex: 3 }]}><Rise from={8}>{header}</Rise></View> : null}
         {scroll ? (
           <Animated.ScrollView
+            ref={scrollRef}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             scrollEventThrottle={16}
-            onScroll={Animated.event([{ nativeEvent: { contentOffset: { y } } }], { useNativeDriver: native })}
+            onScroll={Animated.event([{ nativeEvent: { contentOffset: { y } } }], { useNativeDriver: native, listener: bus.emit })}
             refreshControl={onRefresh ? <RefreshControl tintColor={K.copper} refreshing={refreshing} onRefresh={async () => { setRefreshing(true); try { await onRefresh(); } finally { setRefreshing(false); } }} /> : undefined}
             contentContainerStyle={[wrap, { paddingTop: header ? 4 : top, paddingBottom: bottom }, contentStyle]}>
             {body}
@@ -89,6 +96,11 @@ export function Page({ children, title, header, footer, tabs, maxWidth = 1180, s
           </Animated.View>
         ) : null}
 
+        {tabs && !sidebar && !footer ? (
+          <LinearGradient pointerEvents="none" colors={['rgba(247,238,232,0)', 'rgba(247,238,232,0.92)', K.canvas]} locations={[0, 0.45, 1]}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 120 + insets.bottom }} />
+        ) : null}
+
         {footer ? (
           <>
           <LinearGradient pointerEvents="none" colors={['rgba(247,238,232,0)', 'rgba(244,229,220,0.92)']} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: (tabs && !sidebar ? 190 : 110) + insets.bottom }} />
@@ -98,6 +110,14 @@ export function Page({ children, title, header, footer, tabs, maxWidth = 1180, s
           </>
         ) : null}
       </View>
+  );
+  const moving = <Animated.View style={[motion.style, { backgroundColor: K.canvas }]}>{page}</Animated.View>;
+  // laptop website: pushed pages (radiation, report, briefing…) keep the left rail like the tab screens
+  return (
+    <FocusReplay>
+      <ScrollBus.Provider value={bus}>
+        {sidebar && !tabs ? <View style={{ flex: 1, flexDirection: 'row', backgroundColor: K.canvas }}><Sidebar /><View style={{ flex: 1, overflow: 'hidden' }}>{moving}</View></View> : moving}
+      </ScrollBus.Provider>
     </FocusReplay>
   );
 }

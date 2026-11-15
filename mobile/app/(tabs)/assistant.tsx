@@ -1,20 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
+import { Animated, Easing, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
-import { Menu, Keyboard, Paperclip, ArrowUp, X, FileText, FlaskConical, Image as ImageIcon, Volume2, VolumeX, Mic } from 'lucide-react-native';
+import { Keyboard, Paperclip, ArrowUp, X, FileText, FlaskConical, Image as ImageIcon, Volume2, VolumeX, Mic, ChevronLeft, History, Plus } from 'lucide-react-native';
 import { useAuth } from '@/auth';
 import { ELEV, K, native, web } from '@/kit/tokens';
 import { FocusReplay, Kicker, Pressy, Rise, Txt, haptic, useLayout } from '@/kit/core';
 import { ListRow, ListGroup, Sheet, Tag } from '@/kit/ui';
 import { Backdrop } from '@/kit/page';
-import { AstraOrb, MicBadge, OrbState } from '@/kit/orb';
+import { MicBadge, OrbState } from '@/kit/orb';
+import { AiAvatar, AiIntro } from '@/AiAvatar';
+import { getFlag, setFlag } from '@/storage';
+import { usePageMotion } from '@/kit/pageMotion';
+import { leaveTab } from '@/kit/transition';
 import { SUGGESTIONS, ask, titleFor } from '@/data/assistant';
 import { useCrew } from '@/data/crew';
 import { ChatMsg, getStore, setStore, uid, useStore } from '@/data/store';
 
-const TITLE: Record<OrbState, string> = { ready: 'Hi, I’m Astra', listening: 'I’m listening', thinking: 'Thinking…', speaking: 'Astra is speaking' };
+const TITLE: Record<OrbState, string> = { ready: 'Hello', listening: 'I’m listening', thinking: 'Thinking…', speaking: 'Celeste is speaking' };
 
 function Bubble({ m, streaming }: { m: ChatMsg; streaming?: boolean }) {
   const a = useRef(new Animated.Value(0)).current;
@@ -49,6 +53,18 @@ function Typing() {
 
 export default function Assistant() {
   const insets = useSafeAreaInsets();
+  // tab transition (shared with every page) + the sphere powering up each time you arrive on SI
+  const motion = usePageMotion({ tabs: true });
+  const pop = useRef(new Animated.Value(1)).current;
+  const burst = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!motion.arrivals) return;
+    pop.setValue(0); burst.setValue(0);
+    Animated.parallel([
+      Animated.spring(pop, { toValue: 1, delay: 180, useNativeDriver: native, speed: 5, bounciness: 9 }),
+      Animated.timing(burst, { toValue: 1, duration: 1100, delay: 320, easing: Easing.out(Easing.cubic), useNativeDriver: native }),
+    ]).start();
+  }, [motion.arrivals]);
   const { sidebar, gutter } = useLayout();
   const { user } = useAuth();
   const crew = useCrew();
@@ -56,6 +72,17 @@ export default function Assistant() {
   const chats = useStore(s => s.chats);
   const [chatId, setChatId] = useState<string | null>(null);
   const [state, setState] = useState<OrbState>('ready');
+  // first meeting: the comet → ring → avatar animation, ending exactly where the avatar sits
+  const rootRef = useRef<View>(null), avRef = useRef<View>(null);
+  const [rootSize, setRootSize] = useState<{ w: number; h: number } | null>(null);
+  const [introPending, setIntroPending] = useState(false);
+  const [introBox, setIntroBox] = useState<{ x: number; y: number; size: number } | null>(null);
+  useEffect(() => { getFlag('aiIntroSeen').then(seen => { if (!seen) setIntroPending(true); }); }, []);
+  const measureIntro = () => {
+    if (!introPending || introBox) return;
+    setTimeout(() => avRef.current?.measureInWindow((ax, ay, aw) => rootRef.current?.measureInWindow((rx, ry) => setIntroBox({ x: ax - rx, y: ay - ry, size: aw }))), 750);
+  };
+  useEffect(() => { if (introPending) measureIntro(); }, [introPending]);
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
   const [files, setFiles] = useState<string[]>([]);
@@ -150,6 +177,7 @@ export default function Assistant() {
 
   const newChat = () => { Speech.stop(); stopListening(false); setChatId(null); setStream(null); setKb(false); setState('ready'); };
   const orbSize = convo ? 96 : sidebar ? 260 : 210;
+  const first = user?.name.split(' ')[0] ?? 'crew';
 
   const controls = (
     <View style={{ paddingHorizontal: gutter, paddingBottom: (sidebar ? 22 : 104) + insets.bottom, width: '100%', maxWidth: 720, alignSelf: 'center' }}>
@@ -174,7 +202,7 @@ export default function Assistant() {
         </ScrollView>
       )}
       <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: K.cardSolid, borderRadius: 26, padding: 6, paddingLeft: 16, borderWidth: 1, borderColor: K.hair2 }, ELEV.card]}>
-        <TextInput ref={input} value={draft} onChangeText={setDraft} placeholder={state === 'listening' ? 'Listening…' : 'Ask Astra about your health'} placeholderTextColor={K.ink3}
+        <TextInput ref={input} value={draft} onChangeText={setDraft} placeholder={state === 'listening' ? 'Listening…' : 'Ask Celeste about your health'} placeholderTextColor={K.ink3}
           onSubmitEditing={() => send(draft)} returnKeyType="send" style={[{ flex: 1, fontFamily: 'Geist_400Regular', fontSize: 15, color: K.ink, height: 40 }, web ? ({ outlineStyle: 'none' } as any) : null]} />
         <Pressy label="Attach a file" onPress={() => setAttach(true)}><View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' }}><Paperclip size={18} color={K.ink2} /></View></Pressy>
         {draft.trim() || files.length ? (
@@ -199,16 +227,24 @@ export default function Assistant() {
 
   return (
     <FocusReplay>
+      <Animated.View style={[motion.style, { backgroundColor: K.canvas }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: K.canvas }}>
+        <View ref={rootRef} onLayout={e => setRootSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} pointerEvents="none" style={{ position: 'absolute', inset: 0 } as any} />
         <Backdrop />
         <View style={{ paddingTop: insets.top + (sidebar ? 26 : 10), paddingHorizontal: gutter, width: '100%', maxWidth: 1180, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Pressy label="Menu" onPress={() => router.push('/assistant/menu')}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}><Menu size={20} color={K.ink} /><Txt v="headline">Menu</Txt></View></Pressy>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressy label={voiceOn ? 'Mute spoken replies' : 'Speak replies'} onPress={() => { setVoiceOn(v => !v); Speech.stop(); }}>
-              <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: K.cardSolid, borderWidth: 1, borderColor: K.hair2 }}>{voiceOn ? <Volume2 size={14} color={K.ink} /> : <VolumeX size={14} color={K.ink3} />}</View>
+          {sidebar ? <Txt v="headline">Celeste SI</Txt> : (
+            <Pressy label="Back to Home" onPress={async () => { await leaveTab('assistant', 'today'); router.navigate('/today'); }} hitSlop={8}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingRight: 8 }}><ChevronLeft size={22} color={K.ink} /><Txt v="headline">Home</Txt></View>
             </Pressy>
-            {convo ? <Tag label="New chat" onPress={newChat} /> : null}
-            <Tag label="Chat history" onPress={() => router.push('/assistant/history')} />
+          )}
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            {convo ? <Tag label="New chat" icon={Plus} onPress={newChat} /> : null}
+            <Pressy label="Chat history" onPress={() => router.push('/assistant/history')} hitSlop={6}>
+              <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: K.cardSolid, borderWidth: 1, borderColor: K.hair2 }}><History size={16} color={K.ink} /></View>
+            </Pressy>
+            <Pressy label={voiceOn ? 'Mute spoken replies' : 'Speak replies'} onPress={() => { setVoiceOn(v => !v); Speech.stop(); }} hitSlop={6}>
+              <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: K.cardSolid, borderWidth: 1, borderColor: K.hair2 }}>{voiceOn ? <Volume2 size={16} color={K.ink} /> : <VolumeX size={16} color={K.ink3} />}</View>
+            </Pressy>
           </View>
         </View>
 
@@ -216,11 +252,15 @@ export default function Assistant() {
           <Rise>
             <View style={{ alignItems: 'center', marginTop: convo ? 4 : 22 }}>
               {!convo ? <Kicker>Voice conversation</Kicker> : null}
-              <Txt v={convo ? 'headline' : 'display'} center style={{ marginTop: convo ? 0 : 8 }}>{TITLE[state]}</Txt>
+              <Txt v={convo ? 'headline' : 'display'} center style={{ marginTop: convo ? 0 : 8 }}>{state === 'ready' ? `Hello, ${first}` : TITLE[state]}</Txt>
               {!convo ? <Txt v="sub" color={K.ink2} center style={{ marginTop: 6 }}>{state === 'listening' ? 'Speak naturally — tap the mic when you’re done.' : 'What would you like to check?'}</Txt> : null}
-              <View style={{ marginTop: convo ? 0 : 18, marginBottom: convo ? -10 : 0 }}><AstraOrb size={orbSize} state={state} /></View>
+              <View ref={avRef} onLayout={measureIntro} style={{ marginTop: convo ? 0 : 18, marginBottom: convo ? -10 : 0, opacity: introPending ? 0 : 1 }}><Animated.View style={{ opacity: pop.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }), transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) }] }}>
+                <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: orbSize, height: orbSize, borderRadius: orbSize, borderWidth: 2, borderColor: '#EE8F6A',
+                  opacity: burst.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.7, 0] }), transform: [{ scale: burst.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.7] }) }] }} />
+                <AiAvatar size={orbSize} state={state} />
+              </Animated.View></View>
               {heard ? <Txt v="bodyM" center color={K.copperInk} style={{ marginTop: 6, maxWidth: 320 }}>“{heard}”</Txt> : null}
-              {!convo && !heard && state === 'ready' ? (
+              {!convo && !heard && state === 'ready' && !showComposer ? (
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
                   {SUGGESTIONS.slice(0, 2).map(s => (
                     <Pressy key={s} label={s} onPress={() => send(s)}>
@@ -238,7 +278,7 @@ export default function Assistant() {
 
         {showComposer ? controls : voiceControls}
 
-        <Sheet open={attach} onClose={() => setAttach(false)} kicker="Attach" title="Add a file for Astra">
+        <Sheet open={attach} onClose={() => setAttach(false)} kicker="Attach" title="Add a file for Celeste">
           <ListGroup>
             {[{ icon: FileText, t: 'Dosimeter report', s: 'PDF · personal dosimeter', f: 'dosimeter-report.pdf' }, { icon: FlaskConical, t: 'Lab results', s: 'Blood and urine markers', f: 'lab-results.pdf' }, { icon: ImageIcon, t: 'Photo', s: 'Skin, eye or injury photo', f: 'photo.jpg' }].map(o => (
               <ListRow key={o.f} icon={o.icon} title={o.t} sub={o.s} onPress={() => { setFiles(x => (x.includes(o.f) ? x : [...x, o.f])); setAttach(false); setKb(true); }} />
@@ -246,7 +286,9 @@ export default function Assistant() {
           </ListGroup>
           <Txt v="caption" color={K.ink3} center style={{ marginTop: 10 }}>Demo · files are not uploaded or parsed yet.</Txt>
         </Sheet>
+        {introBox && rootSize ? <AiIntro box={introBox} W={rootSize.w} H={rootSize.h} name={first} onDone={() => { setFlag('aiIntroSeen'); setIntroPending(false); setIntroBox(null); }} /> : null}
       </KeyboardAvoidingView>
+      </Animated.View>
     </FocusReplay>
   );
 }

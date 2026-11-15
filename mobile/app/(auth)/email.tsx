@@ -27,8 +27,8 @@ export default function Email() {
     } catch (e: any) { setErr(e.message); setExists(e.status === 409); } finally { setBusy(false); }
   };
   return (
-    <FormShell step={4} title="Your email" sub="We’ll send a 4-digit code to confirm your account."
-      onBack={() => nav.back('/mission')} onNext={next} nextDisabled={!valid} nextLoading={busy} nextLabel="Send code">
+    <FormShell step={5} title="Your email" sub="We’ll send a 4-digit code to confirm your account."
+      onBack={() => nav.back('/goal')} onNext={next} nextDisabled={!valid} nextLoading={busy} nextLabel="Send code">
       <Input label="Email" required value={d.email} onChangeText={v => { set({ email: v }); setErr(null); }} valid={valid} placeholder="example@gmail.com"
         autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" textContentType="emailAddress" focusOnEnter
         returnKeyType="send" onSubmitEditing={() => valid && next()} error={err} />

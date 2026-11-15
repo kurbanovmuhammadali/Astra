@@ -9,6 +9,7 @@ import { Kicker, Txt } from '@/kit/core';
 import { Button, Card, Chip, PageHead, TopBar, toast } from '@/kit/ui';
 import { Page } from '@/kit/page';
 import { setStore, useStore } from '@/data/store';
+import { goBack } from '@/kit/transition';
 
 const GENDERS = ['Female', 'Male', 'Prefer not to say'];
 
@@ -28,7 +29,7 @@ export default function EditProfile() {
       if (name.trim() && name.trim() !== user?.name) { const r = await api<{ user: any }>('/api/account', { method: 'PUT', body: { name: name.trim() } }); setUser(r.user); }
       setStore(s => ({ ...s, profile: { ...s.profile, age, gender, height, weight } }));
       toast('Profile saved');
-      router.back();
+      goBack('/profile');
     } catch (e: any) { toast(e.message ?? 'Could not save'); } finally { setBusy(false); }
   };
   return (
@@ -46,7 +47,7 @@ export default function EditProfile() {
       </View>
       <Card sunk style={{ marginTop: 22 }}>
         <Kicker color={K.ink2}>Why we ask</Kicker>
-        <Txt v="caption" color={K.ink2} style={{ marginTop: 4 }}>Age, sex, height and mass shape heart-rate zones and resistance loads. They stay in your Astra account and are never shared without your consent.</Txt>
+        <Txt v="caption" color={K.ink2} style={{ marginTop: 4 }}>Age, sex, height and mass shape heart-rate zones and resistance loads. They stay in your Celeste account and are never shared without your consent.</Txt>
       </Card>
     </Page>
   );

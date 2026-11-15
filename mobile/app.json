@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Astra",
+    "name": "Celeste",
     "slug": "perigee-crew-health",
     "version": "1.0.0",
     "scheme": "perigee",
@@ -77,7 +77,7 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "name": "Astra · Crew Health",
+      "name": "Celeste · Crew Health",
       "favicon": "./assets/icon.png"
     },
     "plugins": [
