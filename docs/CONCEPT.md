@@ -1,6 +1,6 @@
-# PERIGEE — Crew Health Companion
+# HMSC — Health Monitoring System Cometa
 
-> *Perigee: the point in an orbit closest to Earth.* The app keeps every astronaut close to the care they would get at home.
+> *HMSC (Health Monitoring System Cometa).* The app keeps every astronaut close to the care they would get at home.
 
 ## 1. What the NASA challenge is really asking for
 
@@ -20,13 +20,13 @@ The challenge: **build a visual tool that gathers health indicators and lets an 
 
 ## 2. Our idea in one sentence
 
-**PERIGEE sits on top of the crew's existing health system — it does not replace it.** It reads continuous data from a wearable (WHOOP first), combines it with manual measurements, lab results and body composition, compares everything against the astronaut's *personal pre-flight baseline*, and then *adapts* the mission's prescribed health plan with clear, explainable suggestions.
+**HMSC sits on top of the crew's existing health system — it does not replace it.** It reads continuous data from a wearable (WHOOP first), combines it with manual measurements, lab results and body composition, compares everything against the astronaut's *personal pre-flight baseline*, and then *adapts* the mission's prescribed health plan with clear, explainable suggestions.
 
 Example (the core feature):
 
 > **Mission plan:** Treadmill 1 km · ARED resistance 60 min
 > **What we see:** urinary NTx (bone-resorption marker) up 18 % vs baseline for 2 weeks, WHOOP strain below target 4 of last 7 days.
-> **PERIGEE suggests:** *"Your plan says 1 km. Your bone markers are getting worse — add +1 km of loaded treadmill today, for your own bones."* (within the crew exercise protocol; flagged to flight surgeon if it would exceed the protocol.)
+> **HMSC suggests:** *"Your plan says 1 km. Your bone markers are getting worse — add +1 km of loaded treadmill today, for your own bones."* (within the crew exercise protocol; flagged to flight surgeon if it would exceed the protocol.)
 
 ## 3. How we help astronauts with their data — the loop
 
@@ -41,7 +41,7 @@ Example (the core feature):
 ```
 
 1. **Collect** – WHOOP (recovery, HRV, resting HR, SpO₂, skin temperature, sleep stages, strain, workouts, body measurements) via the official WHOOP API v2 with OAuth. Manual entry for what a band cannot measure: blood pressure, blood glucose, body temperature, body mass, mood, symptoms, vision changes, radiation dose, and lab panels (bone markers, vitamin D, haemoglobin, WBC…).
-2. **Normalise** – every value becomes one record: `metric · value · unit · source · recorded_at`. A new source (Oura, Garmin, Apple Health, CSA's Astroskin/Bio-Monitor, NASA's own systems) only needs an *adapter* that outputs this record. The universal `/api/ingest` endpoint already accepts it.
+2. **Normalise** – every value becomes one record: `metric · value · unit · source · recorded_at`. A new source (Oura, Garmin, CSA's Astroskin/Bio-Monitor, NASA's own systems) only needs an *adapter* that outputs this record. The universal `/api/ingest` endpoint already accepts it.
 3. **Evaluate** – each metric is scored **green / amber / red** using (a) clinical reference ranges and (b) deviation from *the astronaut's own baseline* (a 7-day trend matters more than one reading). Metrics roll up into 6 **body systems** shown on a clickable 3D body: Heart & vessels, Bones & muscle, Brain & mood, Eyes (SANS), Immune, Metabolism. A single **Readiness score** summarises the day.
 4. **Act** – the mission plan (exercise, sleep window, nutrition, medical tasks) is imported as-is. The adaptation engine adds explainable suggestions ("why" + "what" + "how much"), daily measurement prompts, and an XP/streak system so routine self-checks become a habit.
 5. **Escalate** – red flags (e.g., BP ≥ 140/90 repeatedly, SpO₂ < 92 %, fever, vision change, chest pain) are never "gamified away": the app tells the astronaut to contact the flight surgeon and generates a one-tap report (store-and-forward, works with comms delays).
@@ -51,7 +51,7 @@ Example (the core feature):
 | Data | Source now | Ready for later |
 |---|---|---|
 | HRV, resting HR, recovery, sleep, strain, SpO₂, skin temp | **WHOOP API v2** (real OAuth) or realistic demo data | Any wearable adapter |
-| BP, glucose, body temp, mass, mood, symptoms | Manual entry in the app | Bluetooth devices, Apple HealthKit |
+| BP, glucose, body temp, mass, mood, symptoms | Manual entry in the app | Bluetooth devices |
 | Labs (bone markers, vitamin D, Hb, WBC) | Manual entry / CSV-JSON import | NASA lab results feed, FHIR Observation import |
 | Radiation dose | Manual entry | Station dosimeter feed (e.g. ISS RAD / crew personal dosimeters) |
 | Reference ranges & risks | Public clinical ranges + NASA HRP Human System Risks | NASA OSDR / LSDA datasets, flight-surgeon-specific thresholds |
@@ -67,6 +67,6 @@ Public resources we build on:
 
 ## 5. Important honesty notes (judges will ask)
 
-- WHOOP's cloud API needs internet. In orbit, data would sync over the station's network (ISS has it); on Mars it would be store-and-forward. PERIGEE is **offline-first in design**: the evaluation engine runs on the crew's own server/device.
+- WHOOP's cloud API needs internet. In orbit, data would sync over the station's network (ISS has it); on Mars it would be store-and-forward. HMSC is **offline-first in design**: the evaluation engine runs on the crew's own server/device.
 - WHOOP is not validated for microgravity. That is exactly why we compare against a *personal baseline* and combine it with clinical measurements, instead of trusting one sensor.
 - The app gives guidance and escalation — it does **not** diagnose or prescribe. Flight surgeons stay in the loop.

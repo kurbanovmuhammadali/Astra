@@ -1,63 +1,8 @@
-# ASTRA — Crew Health Companion (NASA Space Apps 2026)
+# HMSC — Health Monitoring System Cometa (NASA Space Apps 2026)
 
-**Challenge:** *Create Health Monitoring Software for Astronauts on Space Missions* — Dushanbe hub.
+Health monitoring for astronauts: WHOOP + manual vitals + labs → personal-baseline evaluation → clickable 3D body map → **adaptive mission plan** → flight-surgeon report.
 
-Health monitoring for astronauts: WHOOP + manual vitals + labs → personal-baseline evaluation with **early-drift warnings** → clickable 3D body map → **adaptive mission plan** → flight-surgeon report. Every rule shows its evidence.
-
-## Try it in 60 seconds
-Open the app → **Try the demo crew** (no sign-up) → on *Today*, press **play** on the Mars-transit replay. Four problems are hidden in 120 days of synthetic data (bone-marker rise, isolation fatigue, body-mass loss, a solar particle event). Watch alerts, body map and plan react day by day; the ground truth is revealed as you go.
-
-## What makes it different
-| | |
-|---|---|
-| **Personal baseline, fixed** | Median of your first 14 days. A slow decline can never become "the new normal". |
-| **Early drift warning** | 7-day median ≥ 3 robust SE worse than baseline, ≥ a minimum clinical % change, and a consistent Theil–Sen trend — or a significant Mann–Kendall trend. Only ever raises green → amber. |
-| **Evidence on every rule** | Each indicator states its basis (clinical / spaceflight-informed / Astra default) and cites NASA HRP, Twins Study, ISS studies. `server/src/health/references.js` — please re-verify citations before publishing. |
-| **Honest validation** | `cd server && npm run validate` replays synthetic crews → [docs/VALIDATION.md](docs/VALIDATION.md). It states plainly where drift detection helps (fewer false alarms, earlier on body-mass loss) and where it does not (no earlier than a 10 % threshold for noisy slow drifts). |
-| **Explainable plan** | Mission plan stays as prescribed; Astra adds tasks with a "why" and evidence ids, and routes protocol changes to the flight surgeon. |
-| **Real NASA data** | *See real NASA data (Inspiration4)* loads actual OSDR OSD-569 blood counts through the same engine: pre-flight baseline → launch → recovery, with provenance and limits shown. `npm run import:osdr` verifies/refreshes the file. |
-| **Not a medical device** | Guidance and escalation only. Synthetic data is always labelled. |
-
-## Apple Watch / Apple Health
-**Built:** *Data sources → Apple Health · Apple Watch → Import Health export* (web). On the iPhone: Health → your photo → Export All Health Data → unzip → pick `export.xml`. The browser reads the (often huge) file locally and uploads only resting HR, HRV (SDNN), SpO₂, sleep, weight, blood pressure, temperature and exercise minutes for the last 90 days; the server validates, aggregates per day (sleep stages merged, units converted) and upserts idempotently. Everything then flows through the same baseline / drift / evidence engine. Tested on a synthetic export in Apple's attribute layout (`server/test/applehealth.test.js`) — **not yet on a real Apple Watch export.**
-
-**Not built:** live HealthKit sync from an iPhone app. That needs a native iOS build (Expo dev client + HealthKit entitlement) and a physical iPhone + Watch to test. `POST /api/integrations/apple-health/batch` is the contract that app would call.
-
-## Food & calories
-Home → **Log food & calories** (also Profile). Search built-in staples (incl. Central Asian dishes), the USDA database (optional free `USDA_API_KEY`) or Open Food Facts (no key); set grams; log to breakfast / lunch / dinner / snack. Shows kcal and macros against a goal (default 2500 kcal / 90 g protein, editable via `PUT /api/food/goal`), a 7-day chart, and a heuristic note when the last 3 logged days average under 75% of the goal. Only the search words leave the server. Values are estimates.
-
-**AI provider.** Ask Astra and the photo estimate use Google Gemini when `GEMINI_API_KEY` is set (model `GEMINI_MODEL`, default `gemini-flash-latest`), otherwise Anthropic Claude when `ANTHROPIC_API_KEY` is set; `AI_PROVIDER` picks one if both exist. Keys live only in server environment variables; the app never receives them.
-
-**Photo estimate** (web / iPhone browser): take or choose a photo; Claude (needs `ANTHROPIC_API_KEY`) lists the foods with approximate grams, kcal and macros, which you review before adding. Sent only after an explicit per-photo agreement, resized to 1024 px, not stored, no name or email included. Expect errors of 20–30%.
-
-**Body profile.** Height, weight, sex, activity level and aim set the daily calorie goal (Mifflin–St Jeor resting burn × activity factor; protein 1.6 g/kg). Estimates, about ±10–15%.
-
-**Steps and calories burned.** Daily steps and active energy are imported from the Apple Health export (Data sources) and shown beside calories eaten.
-
-## Training check (camera)
-Home → **Training check**. Runs Google MediaPipe Pose Landmarker in the browser (33 body points; Astra uses 13: nose, shoulders, elbows, wrists, hips, knees, ankles). Reps are counted from joint angles and form is validated: squats need knee angle ≤ 100° at the bottom, push-ups need elbow ≤ 90° with a level body, pull-ups need elbow ≤ 80° and the chin above the bar. The video never leaves the device; only the result is saved (`POST /api/workouts`). Counting logic is unit-tested on synthetic skeletons (`npm run test:pose` in mobile/); it has not been validated against real people yet.
-
-## Deploy (Render)
-`render.yaml` defines one Web Service (API + built web app). In Render: New → Blueprint → pick this repo → fill the secrets it asks for (`RESEND_API_KEY`, `MAIL_FROM`, `USDA_API_KEY`, optionally `ANTHROPIC_API_KEY`) → deploy → set `APP_URL` to the service URL and redeploy. The web app is prebuilt in `server/public`; after changing the mobile code run `npm run build:web` in `mobile/` and commit the result. On the free plan the SQLite file is wiped on every restart (the guest demo reseeds itself); add a Render disk mounted at `/opt/render/project/src/server/data` to keep real accounts.
-
-## Planner (Training → Plan my training)
-Choose a goal (prepare for a mission, become an astronaut, or get fitter), the mission's goal, weeks, days per week and level. Without AI you get a safe, progressive plan (about +10% a week, a lighter week every fourth week, camera-checkable squats, push-ups and pull-ups). With AI (explicit opt-in, Gemini or Claude) the model writes the plan and an academic-style review of the mission goal; the review may only cite Astra's reference list, anything else is dropped server-side, and the plan is validated and clamped. No name or email is sent. The result is a plan to discuss with a coach or doctor, not medical advice.
-
-## Ask Astra (grounded AI helper)
-*Insights tab.* Answers are built from one snapshot of the user's own data plus the cited rules — flagged indicators, baselines, early-drift flags, today's plan changes, evidence ids. Two engines share the same guardrails:
-- **Offline** (default): deterministic, computed on our server, no external call. Includes a ready-to-edit SBAR message for the flight surgeon.
-- **Claude** (optional): set `ANTHROPIC_API_KEY` (left empty in `.env.example`) **and** the user switches "Let Claude phrase answers" on. Only readings + rule evidence are sent — never name, e-mail, ids or mission text. Model `claude-opus-5-5` (override with `ASTRA_AI_MODEL`), effort low.
-
-Guardrails enforced in code, whatever the model says: red alerts always start with a flight-surgeon line; citations limited to ids present in the data; refusal or API failure falls back to the offline answer; the model is told not to diagnose or prescribe. Tests use an injected fake client (no network, no key).
-
-## Email verification (real)
-Sign-up and log-in use a 6-digit emailed code (10 min, single use, 5 tries, 45 s resend cooldown, HMAC-hashed at rest). Configure **one** provider in `server/.env` — all keys ship **empty** in `.env.example`:
-- `RESEND_API_KEY` (+ verified `MAIL_FROM` domain), or
-- `SMTP_URL` (e.g. `smtps://user:pass@smtp.example.com:465`).
-
-Without a provider, development shows the code in the server log and auto-fills it; **production refuses (503) instead of leaking codes**, and answers identically for known/unknown emails so accounts cannot be enumerated. Covered by `server/test/mail.test.js` (captured delivery, Resend request shape, a fake SMTP conversation).
-
-Read **[docs/CONCEPT.md](docs/CONCEPT.md)** for the challenge analysis (RIDGE hazards → measurable indicators).
+Read **[docs/CONCEPT.md](docs/CONCEPT.md)** first — it explains the challenge and how the app helps astronauts.
 
 ```
 claude version/
@@ -121,10 +66,93 @@ cd mobile && npm run typecheck
 | Account | export all data (JSON), delete account with password (App Store guideline 5.1.1(v)) |
 | Today | readiness score, recovery, sleep, strain, colour-coded alerts, daily metric tiles with charts, check-in CTA |
 | Body map | clickable 3D body, 6 systems with pulsing status hotspots |
-| Plan | mission plan kept as prescribed + Perigee adaptations with "why", surgeon-approval flags, XP, levels, streaks, mission patches |
+| Plan | mission plan kept as prescribed + HMSC adaptations with "why", surgeon-approval flags, XP, levels, streaks, mission patches |
 | Trends | dot-matrix charts per metric, week/month, baseline |
 | Check-in | draggable mood dial + symptoms (red symptoms escalate) |
 | Logging | BP, glucose, temp, mass, bone NTx, vitamin D, radiation, CO₂ — each with "how to measure" |
 | Education | every metric: what it is, why it matters in space, how to measure |
 | Report | flight-surgeon summary, copy/share (store-and-forward) |
 | Integrations | WHOOP v2 OAuth + sync, demo dataset, `/api/ingest` for NASA labs / dosimeters / other wearables |
+
+## Merged from the HMSC prototype
+- **NASA astronaut 3D** on Home (`mobile/src/three/AstronautScene.tsx`): heart beats at resting HR, risk areas glow on the body. Credit: NASA (see `mobile/assets/models/NOTICE`).
+- **Mission risk report** on Home (`mobile/src/data/risk.ts`): cardio, sleep, immune, bone & muscle, mind, radiation + actions for today.
+- **Active data source switch** in Profile (`mobile/src/kit/SourceSwitch.tsx`): Sample data ↔ WHOOP.
+
+## HMSC product flow (signal → explanation → action → handoff)
+Mission Briefing → daily check / data sources with freshness labels → **one attention card** → explain (trend, baseline, source, why) → one action → **offline medical handoff queue**.
+
+| Feature | Where |
+|---|---|
+| Mission Briefing → five-hazard profile (radiation, isolation, distance, gravity, environment) | `mobile/app/briefing.tsx`, `mobile/src/data/mission.ts` |
+| Source labels: demo / received / stale / missing / error / queued | `mobile/src/data/freshness.ts`, Home "Data sources" strip |
+| Daily Crew Health Check (manual sleep, resting HR, mood, exercise, radiation, symptoms) | `mobile/app/daily.tsx` |
+| Attention card + "explain, then act" screen (personal baseline, same-method HRV only, no fake green) | `mobile/src/data/attention.ts`, `mobile/app/attention.tsx` |
+| Radiation module: rate · interval · cumulative (only with full history, else "Cumulative dose unavailable") + NASA DONKI context | `mobile/app/radiation.tsx`, `mobile/src/data/radiation.ts`, `donki.ts` |
+| Offline handoff queue DRAFT → QUEUED → SENT → ACKNOWLEDGED (**simulated**) | `mobile/app/(tabs)/handoff.tsx`, `mobile/src/data/handoff.ts` |
+| Real research data: Inspiration4 CBC (NASA OSDR OSD-569) | `mobile/app/research.tsx`, `mobile/src/data/inspiration4.ts` |
+| Judge demo mode: one synthetic Mars case, one real dataset, one DONKI event, one action, one handoff | `mobile/app/judge.tsx`, `mobile/src/data/scenario.ts` |
+
+Data labels used everywhere: **real astronaut research data** (Inspiration4), **real NASA space-weather context** (DONKI, not a personal dose), **synthetic demo scenario** (invented Mars replay crew), **simulated** handoff queue. WHOOP is the only wearable (an Earth testing input, not flight hardware); the alternative is manual entry.
+The AI assistant tab is hidden from the main flow (code kept in `mobile/app/(tabs)/assistant.tsx`). Internal identifiers (URL scheme `perigee`, storage keys, bundle id) were left unchanged on purpose.
+
+## Personalised plan and WHOOP-only data
+- **Sign-up now asks** sex, height, weight, mission goal and spacewalk (EVA) frequency (steps 4-5), and **requires a data source** (step 8): connect **WHOOP** or enter data **by hand**. Apple Watch / Apple Health were removed; WHOOP is the only wearable.
+- **Data by hand** (`dataMode: 'manual'`): only numbers typed into the Daily crew health check are used (sleep, resting HR, HRV, stress, exercise, radiation, symptoms). No sample or demo values are filled in.
+- **My mission plan** (`mobile/app/mission-plan.tsx`, `mobile/src/data/plan.ts`): training loads and heart-rate zones from height, weight, age and sex; energy, protein and water targets; a **radiation protocol** (before / during / after, higher for Moon/Mars and frequent EVA); an EVA / exposure log that starts a **72-hour post-exposure checklist**; sleep and isolation steps. All numbers are starting estimates (Tanaka max HR, Mifflin-St Jeor).
+- **Stress load** (`mobile/src/data/stress.ts`): the WHOOP developer API does not expose WHOOP's Stress Monitor score (recovery, sleep, cycles, workouts and body measurements only; not confirmed otherwise), so stress is **derived** from WHOOP HRV, resting HR, sleep and recovery against your own baseline, or typed in (1-5). Three or more high days feed the attention card.
+
+## Email verification (on) and the training demo note
+- **Email verification** sends the 4-digit code to the user's inbox (`server/src/mail.js`). `EMAIL_VERIFICATION=on` in `server/.env` makes it mandatory: if no provider is configured the API answers 503 with a clear message and **never shows the code**. Fill in ONE provider in `server/.env` (Gmail SMTP with an App Password, or Resend), then restart `npm run dev`. `EMAIL_VERIFICATION=auto` (or removing the line) restores the demo fallback where an unconfigured dev server auto-fills the code. The seeded demo crew login always uses the dev fallback outside production.
+- **Training is a demo, and says so.** In orbit crews do not do push-ups or pull-ups: they use ARED, CEVIS and the T2 treadmill. HMSC is not integrated with that hardware, so a notice on Training and on every session explains that tracking here is a phone-based demo.
+
+## Flight surgeon console, astronaut background file, temporary demo sign-in
+- **Console** (`mobile/app/admin/`, `server/src/admin.js`): role `surgeon` (or an email in `ADMIN_EMAILS`) sees every astronaut: readiness, alerts, metrics with trends, plan completion, the astronaut app's own report (body numbers, stress, radiation, exposures, sessions), the background file, and can **send a ready plan**: message, resistance sessions / Zone 2 targets, intensity, a **week schedule** (3 ready templates or build your own) and extra tasks. The astronaut sees it at once on Training, Home "today's session" and My mission plan. Prototype note: every surgeon sees every astronaut; a real deployment must assign crew to surgeons and record consent.
+- **Background file** (`mobile/app/background.tsx`, `server/src/background.js`): CV, characteristics, health conditions, allergies, medications and up to 5 files (PDF/Word/text/image, 700 KB each). Surgeons also keep **private notes** the astronaut cannot see. Conditions add cautious "Health considerations" to the personal plan. If the astronaut ticks the consent box, a short summary (characteristics, condition names, background) is given to the companion AI so replies are gentler and more relevant. The AI never diagnoses and does not raise conditions unless the astronaut does. File downloads open in the web console (native app lists names only).
+- **Temporary demo sign-in**: with `DEMO_LOGIN=on` (server/.env, non-production only) the welcome screen shows "Demo astronaut" and "Demo surgeon" and four demo astronauts are seeded. Everything is marked `DEMO-ONLY`; see `DEMO_REMOVAL.md` for the removal steps.
+
+## Camera tab and food/water tracking
+- **Camera tab** (`mobile/app/(tabs)/camera.tsx`, `mobile/src/data/pose.ts`): showcase of camera-based exercise tracking. Counts push-ups, pull-ups, squats and bicep curls from body landmarks (MediaPipe Pose, loaded from a CDN in the browser; frames never leave the device). A **Demo figure** mode runs the same counter on a synthetic skeleton, so it works with no camera. Sessions are saved (source camera / demo / manual) and reported to the surgeon console. On iOS/Android the camera is a preview with +1/-1 counting; pose counting runs in the web version. The browser only allows the camera on `https://` or `localhost`, so open the web app on the laptop that has the camera, or serve it over https.
+- It is a **prototype stand-in**: in orbit crews do not do push-ups or pull-ups; they use ARED, CEVIS and the T2 treadmill, and HMSC is not integrated with them (notice shown on Training and Camera).
+- **Wearable status** on the Camera tab shows WHOOP as Connected / Demo / Not connected. WHOOP shares recovery, sleep, HRV and strain after the session; it does not stream live heart rate to apps.
+- **Food and water** (`mobile/app/nutrition.tsx`): calories, protein and water against targets from the personal plan (quick presets, custom entries, water buttons). Today's intake and camera reps are reported to the surgeon console.
+
+## Where the AI is
+- **AI tab** (`mobile/app/(tabs)/assistant.tsx`, server `POST /api/assistant`): the HMSC health assistant. It answers from the astronaut's own numbers (sleep, recovery, HRV, radiation…) and, if they ticked the consent box, a summary of their background file. Crisis wording is answered with a care message and the flight surgeon, never by a template.
+- Both need `ANTHROPIC_API_KEY` in `server/.env` (model `claude-opus-5-5`, or `COMPANION_MODEL=claude-haiku-5-5` for faster/cheaper). **Without a key they fall back to labelled demo/offline replies** ("Demo reply: AI is not set up on this server").
+- The camera tracker now lives **inside the Training tab** (no separate page). `/admin` signs in as the demo surgeon automatically while `DEMO_LOGIN=on`.
+
+## Remote camera for the flight surgeon, meal detection, Gemini
+- **Camera station** (`mobile/app/camera.tsx`, `mobile/src/kit/CaptureView.tsx`, `server/src/cam.js`): there are no fixed cameras yet, so one hard-coded page, `/camera`, is the camera. Nothing in the app links to it. An operator opens it on a phone or laptop, **chooses the astronaut** from the list, and the camera opens and films him (about one frame per second). Astronauts do not create anything themselves. The surgeon watches in Admin → astronaut → Live camera; the astronaut sees a notice on Home while the camera is on him. Nothing is recorded: the server keeps only the latest frame in memory for a few seconds. DEMO-ONLY: no sign-in, so it needs `CAMERA_STATION=on` in `server/.env` and is refused in production. Private per-astronaut links (`/cam/<token>`) still exist on the server but nothing in the UI offers them. Browsers only allow the camera on `https://` or `localhost`.
+- **Meal detection** (`mobile/src/data/eating.ts`): in orbit food is precooked, so nobody cooks or photographs it; the camera only answers "did they eat?". The phone page runs the pretrained MediaPipe Pose model in the browser and counts hand-to-mouth bites; 4+ bites in one sitting = a meal. Only "a meal happened" is sent to the server (never video). The astronaut's Nutrition screen marks the meal "Seen by the camera", and the surgeon console shows it. Astronauts can also tick ate / skipped themselves.
+- **Exercise counters** (`mobile/src/data/pose.ts`): pretrained MediaPipe Pose + geometry. Push-ups and curls use arm straightness (shoulder-wrist distance over arm length) with thresholds adapted per arm to the person's own range, so other camera angles, partial reps, noise and a hidden arm still count. Very small curls (under about half the motion) are intentionally ignored so tremor never counts.
+- **Gemini**: set `GEMINI_API_KEY` in `server/.env` (model `GEMINI_MODEL`, default `gemini-flash-latest`) for the AI tab. Claude (`ANTHROPIC_API_KEY`) is used if no Gemini key is set. Keys live only in `server/.env`, which is git-ignored and left out of the zip. Rotate any key that was pasted into a chat.
+- **One address for phone + laptop**: `cd mobile && npm run build:web` exports the app into `server/public`; the server then serves app and API together on `http://localhost:4000` (and `http://<your-LAN-IP>:4000` for a phone).
+
+## Camera on a phone: local https
+Phones only create `navigator.mediaDevices` on https pages, so opening the camera station over plain `http://<LAN-IP>:4000` fails ("undefined is not an object … getUserMedia"; the page now explains this and shows the https address instead). Run `cd server && npm run cert` once (it also covers your current Wi-Fi address; run it again if that address changes) and restart the server: it then also listens on `https://<LAN-IP>:4443`. On the phone open `https://<LAN-IP>:4443/camera`, accept the self-signed certificate warning once, choose the astronaut, allow the camera. On the laptop itself `http://localhost:4000/camera` always works. Certificates live in `server/certs/` (git-ignored and not zipped).
+
+
+## Live camera video
+The camera page streams HD (up to 1280x720, 30 fps, ~3 Mbps) peer to peer over WebRTC to the surgeon's browser; the server only relays the handshake over a WebSocket at `/rtc` (library `ws`). A JPEG still every 2.5 s remains as a fallback. The viewer shows resolution, fps and Mbps. Scale-up options: MediaMTX or LiveKit.
+
+## Handoffs and exercise counting
+- Queued handoff reports are sent to `/api/me/handoffs/:id`, listed in the admin console (badge on the crew card, section on the astronaut page) and acknowledged there; the acknowledgement and note return to the astronaut app. Synthetic judge-scenario reports are never sent.
+- Push-up and pull-up counting use MediaPipe world (3D) landmarks, posture gates, One Euro smoothing and a hysteresis state machine (`mobile/src/data/pose.ts`, tests in `mobile/test/pose.test.mts`). Bicep curls were removed.
+
+## Five decision-support tools (Today screen)
+Private wellbeing check (`/wellbeing`, stays on the device), sensor confidence score (on the attention card), what changed since yesterday, EVA readiness check (`/eva`), radiation shelter drill (`/shelter`, simulated, never sent). Logic: `mobile/src/data/{wellbeing,confidence,changes,eva}.ts`.
+
+
+(The family-voice companion and the voice-cloning engine were removed.)
+
+## Teamwork, calls, face recognition and emergency detection
+- **Crews** (`/crew`, `server/src/team.js`): create or join with a code at sign-up or later. Members share the mission briefing, see who is online, can call each other, add an anonymous daily pulse (average shown from 3 people), post kudos, and raise **anonymous concerns** that only flight surgeons read (the author is a salted hash, never shown).
+- **Emergency alerts**: a camera detection, the SOS button or a drill alerts every flight surgeon and every crew mate live (alarm sound, full-screen), escalates after 45 s if nobody responds, and is closed by a surgeon (resolved or false alarm).
+- **Calls** (WebRTC, signalling in `server/src/rtc.js`): astronaut to doctors, doctor to astronaut, crew to crew, and astronaut to family. A family member needs no account: add them in Family, send the private link (WhatsApp, Telegram or copy), they open `/f/<token>` to call or leave a message.
+- **Face recognition** (open-source face-api.js, bundled in `mobile/public`): enrol in Settings → Face sign-in; sign in with email + a live head-turn; the camera station recognises people and labels them. Only 128 numbers are stored, never photos.
+- **Camera station v2** (`/camera` → Scan the room, `mobile/src/kit/StationView.tsx`): several people at once; per-person pose analysis (`data/incident.ts`: collapse, convulsive shaking, no movement after a fall), activity timeline and plain-language report (`data/activity.ts`, free local AI: MediaPipe pose + object detector, no cloud). Not a medical device: it cannot see death or diagnose epilepsy; it only asks people to check immediately.
+- Models and runtimes are bundled (MediaPipe Pose full + heavy, EfficientDet-Lite0, face-api.js); see `mobile/public/NOTICE-models.txt`. `cd mobile && npm test` runs the pose, incident and activity tests.
+
+## Deploying
+See `DEPLOY.md` (Azure VM + Caddy https + backups + optional TURN) and the `deploy/` folder. Features overview: `FEATURES.md`.

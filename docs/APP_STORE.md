@@ -1,4 +1,4 @@
-# Shipping PERIGEE to the App Store
+# Shipping HMSC to the App Store
 
 The iOS app is the Expo project in `mobile/`. EAS Build compiles it in Expo's cloud, so you do **not** need Xcode locally.
 

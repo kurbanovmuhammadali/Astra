@@ -35,8 +35,8 @@ Mapped: recovery score, HRV (RMSSD), resting HR, SpO₂ → `/v2/recovery`; slee
 ] }
 ```
 
-Use it for: NASA lab panels, station dosimeters (`radiation`), cabin CO₂ (`co2`), CSA Bio-Monitor/Astroskin, Oura, Garmin, Apple HealthKit (planned: native module on iOS writes through the same endpoint). Add new metric types in `catalog.js` — the dashboard, trends, body map and plan engine pick them up automatically.
+Use it for: NASA lab panels, station dosimeters (`radiation`), cabin CO₂ (`co2`), CSA Bio-Monitor/Astroskin, Oura, Garmin. Add new metric types in `catalog.js` — the dashboard, trends, body map and plan engine pick them up automatically.
 
 ## Mission plan import
 
-`PUT /api/plan` replaces the base plan with the one from mission control / the flight surgeon. Perigee never edits these items — it only adds adaptations with a reason and flags anything outside protocol as "needs approval".
+`PUT /api/plan` replaces the base plan with the one from mission control / the flight surgeon. HMSC never edits these items — it only adds adaptations with a reason and flags anything outside protocol as "needs approval".
