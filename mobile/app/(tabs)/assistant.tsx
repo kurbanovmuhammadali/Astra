@@ -155,6 +155,19 @@ export default function Assistant() {
     const history = [...(getStore().chats.find(c => c.id === id)?.messages ?? [])];
     const full = await askFull(history, ctx(), sent);
     const reply = full.reply;
+    if (full.logged?.length) { // the SI recorded readings you told it: show them everywhere in the app right away
+      const day = new Date().toISOString().slice(0, 10), now = Date.now();
+      setStore(st => {
+        const e: any = { ...(st.manual[day] ?? { at: now }), at: now };
+        let rad = st.radiation;
+        for (const l of full.logged!) {
+          if (l.metric === 'rhr') e.rhr = l.value; else if (l.metric === 'spo2') e.spo2 = l.value; else if (l.metric === 'sleep') e.sleep = l.value; else if (l.metric === 'hrv') e.hrv = l.value;
+          else if (l.metric === 'bp') { e.bp = l.value; e.bp2 = l.value2 ?? undefined; }
+          else if (l.metric === 'radiation') { e.radiation = l.value; rad = [...rad.filter(r => r.id !== `daily-${day}`), { id: `daily-${day}`, at: now, fromDay: day, toDay: day, mSv: l.value, device: 'Personal dosimeter', location: 'Crew quarters' }]; }
+        }
+        return { ...st, manual: { ...st.manual, [day]: e }, radiation: rad };
+      });
+    }
     setTyping(false);
     // stream the reply word by word while the orb "speaks"
     setState('speaking');

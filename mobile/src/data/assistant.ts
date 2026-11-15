@@ -38,18 +38,20 @@ function demoReply(q: string, c: AssistantContext, files?: string[]): string {
   return `I can help with your sleep, recovery, heart signals, radiation dose and training plan. In this demo my answers come from your Celeste data; full conversation arrives when the assistant is connected.`;
 }
 
+/** A reading the SI recorded because the person told it (e.g. "heart rate 72"). */
+export type Logged = { metric: string; value: number; value2: number | null; unit: string; label: string };
 export type Attachment = { name: string; mime: string; text?: string; data?: string };
 
 export async function ask(history: ChatMsg[], ctx: AssistantContext, attachments: Attachment[] = []): Promise<string> { return (await askFull(history, ctx, attachments)).reply; }
 
-export async function askFull(history: ChatMsg[], ctx: AssistantContext, attachments: Attachment[] = []): Promise<{ reply: string; proposals?: Proposal[] }> {
+export async function askFull(history: ChatMsg[], ctx: AssistantContext, attachments: Attachment[] = []): Promise<{ reply: string; proposals?: Proposal[]; logged?: Logged[] }> {
   const last = history[history.length - 1];
   if (last && CRISIS.test(last.text)) return { reply: CARE_MESSAGE }; // never leave a distress message to a template
   let note = '';
   if (ASSISTANT_PROVIDER === 'server') {
     try {
-      const r = await api<{ reply: string; refused?: boolean; proposals?: Proposal[] }>('/api/assistant', { body: { messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })), context: ctx, ...(attachments.length ? { attachments } : {}) } });
-      if (r.reply && !r.refused) return { reply: r.reply, proposals: r.proposals?.length ? r.proposals : undefined };
+      const r = await api<{ reply: string; refused?: boolean; proposals?: Proposal[]; logged?: Logged[] }>('/api/assistant', { body: { messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })), context: ctx, ...(attachments.length ? { attachments } : {}) } });
+      if (r.reply && !r.refused) return { reply: r.reply, proposals: r.proposals?.length ? r.proposals : undefined, logged: r.logged?.length ? r.logged : undefined };
       note = 'the SI declined this message';
     } catch (e: any) {
       note = e?.status === 503 ? 'SI is not set up on this server: add ANTHROPIC_API_KEY' : e?.status === 429 ? 'the SI is busy' : 'the SI could not be reached';

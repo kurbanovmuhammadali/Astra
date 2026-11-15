@@ -4,13 +4,13 @@ import { router } from 'expo-router';
 import { Phone, Siren } from 'lucide-react-native';
 import { K } from '@/kit/tokens';
 import { Pressy, Txt } from '@/kit/core';
-import { Button } from '@/kit/ui';
+import { Button, toast } from '@/kit/ui';
 import { useAuth } from '@/auth';
 import { api } from '@/api';
 import CallPanel from './CallPanel';
 import { tone, unlockAudio, useCalls } from './calls';
 import { useMission } from '@/data/mission';
-import { VoiceRecorder } from '@/kit/VoiceRecorder';
+import { MessageComposer } from '@/kit/MessageComposer';
 import type { CallKind } from './calls';
 
 export type Incident = { id: number; userId: number; name: string; kind: string; label: string; severity: string; confidence: number | null; evidence: string | null; status: string; escalated: boolean; at: string; responding?: string[] };
@@ -31,8 +31,9 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [unreadFamily, setUnread] = useState(0);
   const alarm = useRef<null | (() => void)>(null);
   const isAdmin = !!user?.admin || user?.role === 'surgeon';
-  const delayMin = useMission().delay ?? 0; // one-way signal delay to Earth, in minutes
-  const slow = !isAdmin && delayMin * 60 > 3; // a live call needs a round trip of a few seconds at most
+  const mDelay = useMission().delay ?? 0;
+  const delayMin = user?.linkDelayMin ?? mDelay; // one-way signal time to Earth, in minutes (the server knows the mission)
+  const slow = !isAdmin && delayMin * 60 > 2; // far from Earth there are no live calls with Earth: messages and video instead
   const [msgTo, setMsgTo] = useState<null | { to: 'doctors' | number; name: string; reason: 'slow' | 'noanswer' }>(null);
   const lastTarget = useRef<null | { to: string; kind: CallKind; name: string }>(null);
   useEffect(() => { if (!web || !user) return; unlockAudio(); try { if ((window as any).Notification?.permission === 'default') (window as any).Notification.requestPermission(); } catch { /* optional */ } }, [user?.id]);
@@ -57,7 +58,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const respond = (i: Incident, kind: 'seen' | 'responding') => api(`/api/alerts/${i.id}/ack`, { body: { kind } }).catch(() => {});
   const resolve = (i: Incident, status: 'resolved' | 'false_alarm') => api(`/api/admin/alerts/${i.id}/resolve`, { body: { status } }).catch(() => {});
   const top = open[0];
-  const place = (to: string, kind: CallKind, name: string) => { lastTarget.current = { to, kind, name }; if (slow && kind === 'doctor') { setMsgTo({ to: 'doctors', name, reason: 'slow' }); return; } startCall(to, kind, name); };
+  const place = (to: string, kind: CallKind, name: string) => { lastTarget.current = { to, kind, name }; if (slow && kind !== 'crew') { if (kind === 'doctor') setMsgTo({ to: 'doctors', name, reason: 'slow' }); else toast('Live calls with Earth only work near Earth. Send a message instead.'); return; } startCall(to, kind, name); };
   const noAnswerTarget = () => { const t = lastTarget.current; if (!t || t.kind !== 'doctor') return undefined; const id = /^u:(\d+)$/.exec(t.to)?.[1]; return () => setMsgTo({ to: isAdmin && id ? Number(id) : 'doctors', name: t.name, reason: 'noanswer' }); };
   const fmtDelay = delayMin >= 1 ? `${Math.round(delayMin)} minutes` : `${Math.round(delayMin * 60)} seconds`;
 
@@ -96,10 +97,10 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
       {web && user && msgTo && call.phase === 'idle' ? (
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 8500, backgroundColor: 'rgba(28,18,13,0.92)', alignItems: 'center', justifyContent: 'center', padding: 20 } as any}>
           <View style={{ width: '100%', maxWidth: 440, backgroundColor: K.cardSolid, borderRadius: 22, padding: 20 }}>
-            <Txt v="mono" color={K.copperInk} upper>{msgTo.reason === 'slow' ? 'Delayed link' : 'No answer'}</Txt>
-            <Txt v="title" style={{ marginTop: 6 }}>Voice message to {msgTo.to === 'doctors' ? 'the flight surgeons' : msgTo.name}</Txt>
-            <Txt v="sub" color={K.ink2} style={{ marginTop: 8, lineHeight: 21 }}>{msgTo.reason === 'slow' ? `The signal needs about ${fmtDelay} to cross to Earth, so a live call cannot work: every sentence would arrive minutes late. Record a message instead. It is stored, sent when the link is up and answered the same way (store and forward, like deep-space networks).` : 'Nobody picked up. Leave a message: it is held and delivered, and you get the answer as a message too.'}</Txt>
-            <View style={{ marginTop: 16 }}><VoiceRecorder to={msgTo.to} onSent={() => setMsgTo(null)} /></View>
+            <Txt v="mono" color={K.copperInk} upper>{msgTo.reason === 'slow' ? 'Calls are for near Earth' : 'No answer'}</Txt>
+            <Txt v="title" style={{ marginTop: 6 }}>Message to {msgTo.to === 'doctors' ? 'the flight surgeons' : msgTo.name}</Txt>
+            <Txt v="sub" color={K.ink2} style={{ marginTop: 8, lineHeight: 21 }}>{msgTo.reason === 'slow' ? `The signal needs about ${fmtDelay} to cross to Earth, so a live call cannot work: every sentence would arrive minutes late. Send a text, a voice recording or a short video instead. It is stored, sent when the link is up and answered the same way (store and forward, like deep-space networks).` : 'Nobody picked up. Leave a message: it is held and delivered, and you get the answer as a message too.'}</Txt>
+            <View style={{ marginTop: 16 }}><MessageComposer to={msgTo.to} delayMin={delayMin} onSent={() => setMsgTo(null)} /></View>
             <View style={{ marginTop: 10 }}><Button kind="ghost" title="Close" onPress={() => setMsgTo(null)} /></View>
           </View>
         </View>

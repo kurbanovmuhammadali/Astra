@@ -3,7 +3,7 @@ import compression from 'compression';
 import { isDoctorEmail } from './roles.js';
 import { aiSnapshot, freshenWhoop } from './aidata.js';
 import { mountVoicemail } from './voicemail.js';
-import { mountBrain, startBrain, datasetFor, extractProposals, storeProposals } from './brain.js';
+import { mountBrain, startBrain, datasetFor, extractProposals, storeProposals, applyLogs, applyProfile } from './brain.js';
 import { mountDemo, demoOn } from './demo-accounts.js';
 import { ttsOn, speakWav, speakable } from './tts.js';
 import { existsSync, readFileSync } from 'node:fs';
@@ -40,7 +40,7 @@ export const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(compression()); // gzip the web app and the API: the first load is several times smaller
-app.use('/api/assistant', express.json({ limit: '7mb' })); // attachments (a PDF or photo the person chose to send)
+app.use(['/api/assistant', '/api/voicemail'], express.json({ limit: '7mb' })); // attachments (a PDF or photo the person chose to send)
 app.use(express.json({ limit: '1mb' }));
 
 // security headers + CORS (credentials only for allow-listed origins)
@@ -398,7 +398,15 @@ app.post('/api/assistant', requireAuth, async (req, res) => {
     const r = await assistantReply({ ...(req.body ?? {}), background: aiSummary(req.user.id), measured: { ...aiSnapshot(req.user.id), dataset: datasetFor(req.user.id) }, profileFiles: aiFiles(req.user.id) });
     const asked = /day off|rest day|take a rest|skip (today|training)|lighter|schedule|plan my|выходн|отдых|\bрасписан/i.test(String((req.body?.messages ?? []).slice(-1)[0]?.text ?? ''));
     const { text, list } = extractProposals(r.reply);
-    res.json({ ...r, reply: text || r.reply, proposals: r.escalate ? [] : storeProposals(req.user.id, list, { userAsked: asked }) });
+    const lastText = String((req.body?.messages ?? []).slice(-1)[0]?.text ?? '');
+    const fileText = (req.body?.attachments ?? []).map(a => a?.text ?? '').join(' ') + ' ' + aiFiles(req.user.id).text.map(t => t.text).join(' ');
+    const binaryFile = (req.body?.attachments ?? []).some(a => a?.data);
+    const wantsEdit = /\b(add|put|record|save|update|enter|log|input|include|insert)\b|внес|добав|запиш|сохран|обнов/i.test(lastText);
+    const logged = r.escalate ? [] : applyLogs(req.user, list, lastText, { fileText, binaryFile }); // readings the person told the SI (or that are in their text files) are recorded
+    const prof = r.escalate ? { done: [], denied: [] } : applyProfile(req.user, list, { userAsked: wantsEdit });
+    const denied = [...new Set([...(logged.denied ?? []), ...prof.denied])];
+    const note = denied.length ? '\n\nI cannot change another astronaut\'s data: only a doctor or team leader with admin access can do that.' : '';
+    res.json({ ...r, reply: (text || r.reply) + note, logged: [...logged], profileChanges: prof.done, proposals: r.escalate ? [] : [...logged.pending, ...storeProposals(req.user.id, list, { userAsked: asked })] });
   } catch (e) { companionFail(res, e); }
 });
 // natural voice for the SI (Gemini text-to-speech); the app falls back to the browser's own voices when this is unavailable

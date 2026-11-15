@@ -119,7 +119,7 @@ export function useCalls(query: string | null, onEvent?: (m: any) => void) {
           const why: Record<string, string> = { declined: 'The call was declined.', 'no-answer': 'No answer.', hangup: 'The call ended.', missed: 'Missed call.', taken: 'Answered by another flight surgeon.', cancelled: 'The caller hung up.', disconnected: 'The other side disconnected.', gone: 'This call is no longer available.' };
           cleanup(why[m.reason] ?? 'The call ended.');
         } else if (m.type === 'unavailable') {
-          cleanup(m.reason === 'not-allowed' ? 'You cannot call that person.' : m.pending ? 'Not online right now. They will see the call when they open their link.' : 'They are not online right now.');
+          cleanup(m.reason === 'no-live-link' ? 'Live calls only work near Earth. Send a message instead.' : m.reason === 'not-allowed' ? 'You cannot call that person.' : m.pending ? 'Not online right now. They will see the call when they open their link.' : 'They are not online right now.');
         } else if (m.type !== 'hello') ev.current?.(m);
         if (m.type === 'hello') ev.current?.(m);
       };

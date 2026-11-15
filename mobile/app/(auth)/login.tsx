@@ -18,7 +18,7 @@ export default function Login() {
   const { requestCode, faceLogin, demoLogin } = useAuth();
   const [demoOn, setDemoOn] = useState(false);
   React.useEffect(() => { api<{ demoAccounts?: boolean }>('/api/health').then(h => setDemoOn(!!h.demoAccounts)).catch(() => {}); }, []);
-  const tryDemo = async (as: 'astronaut' | 'doctor' | 'leader') => { setBusy(true); setErr(null); try { await demoLogin(as); nav.replace(as === 'astronaut' ? '/today' : as === 'leader' ? '/admin/leader' : '/admin'); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const tryDemo = async (as: 'astronaut' | 'astronaut-iss' | 'doctor' | 'leader') => { setBusy(true); setErr(null); try { await demoLogin(as); nav.replace(as === 'astronaut' || as === 'astronaut-iss' ? '/today' : as === 'leader' ? '/admin/leader' : '/admin'); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   const [faceOk, setFaceOk] = useState(false), [scan, setScan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -57,7 +57,8 @@ export default function Login() {
           <T size={13.5} weight="m" color={A.ink}>Judges: try a demo account</T>
           <T size={12.5} color={A.ink2} style={{ marginTop: 3, lineHeight: 18 }}>These are demo accounts with ready-made data, a health file and reports. One tap signs you in.</T>
           <View style={{ gap: 8, marginTop: 10 }}>
-            <Press onPress={() => tryDemo('astronaut')} label="Demo astronaut" style={{ padding: 12, borderRadius: 14, backgroundColor: A.copper }}><T size={14} weight="m" color="#fff">Demo astronaut · Alex Morgan</T></Press>
+            <Press onPress={() => tryDemo('astronaut')} label="Demo astronaut" style={{ padding: 12, borderRadius: 14, backgroundColor: A.copper }}><T size={14} weight="m" color="#fff">Demo astronaut · Alex (Mars: messages only)</T></Press>
+            <Press onPress={() => tryDemo('astronaut-iss')} label="Demo ISS astronaut" style={{ padding: 12, borderRadius: 14, backgroundColor: A.copper }}><T size={14} weight="m" color="#fff">Demo astronaut · Mira (ISS: live calls)</T></Press>
             <Press onPress={() => tryDemo('doctor')} label="Demo doctor" style={{ padding: 12, borderRadius: 14, backgroundColor: A.ink }}><T size={14} weight="m" color="#fff">Demo doctor · Dr. Elena Voss</T></Press>
             <Press onPress={() => tryDemo('leader')} label="Demo team leader" style={{ padding: 12, borderRadius: 14, backgroundColor: A.sand2, borderWidth: 1, borderColor: A.line }}><T size={14} weight="m" color={A.ink}>Demo team leader · Cmdr. Volkova</T></Press>
           </View>

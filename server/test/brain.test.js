@@ -16,6 +16,7 @@ const jar = () => { let cookie = ''; const f = async (method, path, body) => {
 }; return f; };
 const crew = jar(), doc = jar();
 let me;
+const actorOf = id => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 const add = (metric, value, hoursAgo, source = 'whoop', value2 = null) => db.prepare("INSERT INTO measurements (user_id, metric, value, value2, unit, source, recorded_at) VALUES (?,?,?,?,?,?, datetime('now', ?))").run(me, metric, value, value2, '', source, `-${hoursAgo} hours`);
 
 test('setup', async () => { me = (await loginAs(crew, 'crew')).body.user.id; await loginAs(doc, 'admin'); db.prepare('DELETE FROM measurements WHERE user_id = ?').run(me); });
@@ -91,3 +92,47 @@ test('a doctor can schedule a day off and sees the whole dataset', async () => {
   assert.equal((await crew('GET', `/api/admin/crew/${me}/brain`)).status, 403);
 });
 test.after(() => srv.close());
+
+test('the SI records a reading only when the person actually said that number', async () => {
+  const before = db.prepare("SELECT COUNT(*) n FROM measurements WHERE user_id = ? AND source = 'manual'").get(me).n;
+  const logged = brain.applyLogs(actorOf(me), [
+    { type: 'log', metric: 'radiation', value: 0.4 }, { type: 'log', metric: 'rhr', value: 72 },
+    { type: 'log', metric: 'rhr', value: 55 },            // never said: refused
+    { type: 'log', metric: 'spo2', value: 250 },          // impossible: refused
+    { type: 'log', metric: 'bp', value: 128 },            // blood pressure needs both numbers
+  ], 'please record my radiation 0.40 and heart rate 72 bpm, bp 128');
+  assert.deepEqual(logged.map(l => l.metric).sort(), ['radiation', 'rhr']);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM measurements WHERE user_id = ? AND source = 'manual'").get(me).n, before + 2);
+  assert.equal(brain.applyLogs(actorOf(me), [{ type: 'log', metric: 'bp', value: 128, value2: 84 }], 'bp 128/84')[0].value2, 84);
+});
+
+test('the SI changes only the signed-in person\'s own data; only an admin may name someone else', async () => {
+  const mira = db.prepare("SELECT * FROM users WHERE email = 'mira@test.local'").get();
+  const self = actorOf(me), admin = db.prepare("SELECT * FROM users WHERE email = 'surgeon@test.local'").get();
+  // own profile: allergy from a file the person sent, when they asked
+  let r = brain.applyProfile(self, [{ type: 'profile', field: 'allergies', text: 'Penicillin (rash)' }], { userAsked: true });
+  assert.equal(r.done.length, 1); assert.equal(r.done[0].for, 'you');
+  assert.equal(brain.applyProfile(self, [{ type: 'profile', field: 'allergies', text: 'penicillin (rash)' }], { userAsked: true }).done.length, 0); // no duplicates
+  assert.equal(brain.applyProfile(self, [{ type: 'profile', field: 'condition', text: 'Mild asthma' }], { userAsked: false }).done.length, 0); // the person must ask
+  // someone else: refused for a normal user
+  r = brain.applyProfile(self, [{ type: 'profile', field: 'allergies', text: 'Shellfish', for: mira.name }], { userAsked: true });
+  assert.equal(r.done.length, 0); assert.deepEqual(r.denied, ['another astronaut']);
+  const l = brain.applyLogs(self, [{ type: 'log', metric: 'rhr', value: 61, for: mira.name }], 'heart rate 61');
+  assert.deepEqual(l.denied, ['another astronaut']); assert.equal(l.length, 0);
+  // an admin may name another astronaut
+  r = brain.applyProfile(admin, [{ type: 'profile', field: 'allergies', text: 'Shellfish', for: mira.name }], { userAsked: true });
+  assert.equal(r.done.length, 1); assert.equal(r.done[0].for, mira.name);
+  assert.match(brain.datasetFor(mira.id).healthFile.allergies, /Shellfish/);
+  assert.equal(brain.datasetFor(me).healthFile.allergies.includes('Shellfish'), false);
+});
+
+test('numbers read from a PDF or photo are confirmed by the person before they are recorded', async () => {
+  const self = actorOf(me);
+  const r = brain.applyLogs(self, [{ type: 'log', metric: 'glucose', value: 93 }], 'add the values from my lab report', { binaryFile: true });
+  assert.equal(r.length, 0); assert.equal(r.pending.length, 1);
+  const before = db.prepare("SELECT COUNT(*) n FROM measurements WHERE user_id = ? AND metric = 'glucose'").get(me).n;
+  assert.equal((await crew('POST', `/api/me/adjustments/${r.pending[0].id}`, { action: 'apply' })).body.status, 'applied');
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM measurements WHERE user_id = ? AND metric = 'glucose'").get(me).n, before + 1);
+  // a number that is in a text file the person attached is recorded straight away
+  assert.equal(brain.applyLogs(self, [{ type: 'log', metric: 'weight', value: 77.5 }], 'add my weight', { fileText: 'Weight: 77.5 kg' }).length, 1);
+});

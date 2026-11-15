@@ -7,7 +7,7 @@ import { VoiceInbox } from '@/kit/VoiceInbox';
 export default function AdminVoice() {
   return (
     <Page title="Messages" maxWidth={760} header={<TopBar title="Messages" />}>
-      <PageHead kicker="Delayed link" title="Voice messages" sub="Messages astronauts recorded when a live call was not possible. Open the astronaut to reply by voice." style={{ marginTop: 6 }} />
+      <PageHead kicker="Delayed link" title="Messages" sub="Text, voice and video from astronauts. Far from Earth this replaces calls. Open the astronaut to reply." style={{ marginTop: 6 }} />
       <VoiceInbox title="From astronauts" />
     </Page>
   );

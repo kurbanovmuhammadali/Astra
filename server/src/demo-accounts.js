@@ -3,7 +3,7 @@
  * surgeons who answer reports, and a team leader who oversees everything. They are ordinary accounts marked by the
  * @demo.celeste address and are created at start-up unless DEMO_ACCOUNTS=off. One click signs in (no password).
  *
- *  POST /api/demo/login            { as: 'astronaut' | 'doctor' | 'leader' }
+ *  POST /api/demo/login            { as: 'astronaut' | 'astronaut-iss' | 'doctor' | 'leader' }
  *  GET  /api/leader/overview       team-leader view: every doctor's activity, every astronaut, every report and reply
  */
 import { db } from './db.js';
@@ -98,7 +98,7 @@ export function mountDemo(app, authResponse) {
   app.post('/api/demo/login', (req, res) => {
     if (!demoOn()) return bad(res, 'Demo accounts are off.', 404);
     const as = req.body?.as;
-    const email = as === 'doctor' ? DOCTORS[0].email : as === 'leader' ? LEADER.email : ASTRONAUTS[0].email;
+    const email = as === 'doctor' ? DOCTORS[0].email : as === 'leader' ? LEADER.email : as === 'astronaut-iss' ? ASTRONAUTS[1].email : ASTRONAUTS[0].email; // Alex is on a Mars mission (messages), Mira on the ISS (live calls)
     seedDemoAccounts(); // the database may have been wiped by a restart
     const u = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!u) return bad(res, 'Demo account missing.', 500);

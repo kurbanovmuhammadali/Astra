@@ -5,7 +5,7 @@ import { F } from '@/theme';
 import { Kicker, Txt } from '@/kit/core';
 import { Button, Card, Tag, toast } from '@/kit/ui';
 import { api } from '@/api';
-import { VoiceRecorder } from '@/kit/VoiceRecorder';
+import { MessageComposer } from '@/kit/MessageComposer';
 import { useApi } from '@/useApi';
 
 type Norm = { metric: string; label: string; unit: string; learned: { mean: number; sd: number; n: number; low: number; high: number } | null; doctor: { low: number | null; high: number | null; note: string | null } | null };
@@ -60,8 +60,8 @@ export function DoctorBrain({ uid, name }: { uid: number; name: string }) {
         );
       })}
 
-      <Kicker color={K.ink2} style={{ marginTop: 16 }}>Voice message to {first}</Kicker>
-      <View style={{ marginTop: 8 }}><VoiceRecorder to={uid} /></View>
+      <Kicker color={K.ink2} style={{ marginTop: 16 }}>Message to {first} (text, voice or video)</Kicker>
+      <View style={{ marginTop: 8 }}><MessageComposer to={uid} /></View>
 
       <Kicker color={K.ink2} style={{ marginTop: 16 }}>Rest and plan changes</Kicker>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>

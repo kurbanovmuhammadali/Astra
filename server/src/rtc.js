@@ -12,6 +12,7 @@
 import { WebSocketServer } from 'ws';
 import { randomBytes } from 'node:crypto';
 import { db } from './db.js';
+import { liveCallOk } from './linkdelay.js';
 import { sessionUser } from './auth.js';
 import { isAdmin } from './roles.js';
 
@@ -138,6 +139,11 @@ function hub(ws, who) {
       let to = String(m.to ?? ''); if (who.role === 'family' && to === 'owner') to = `u:${who.uid}`; // a family guest simply rings "their astronaut"
       const kind = ['doctor', 'family', 'crew'].includes(m.kind) ? m.kind : 'family';
       if (!allowed(who, to)) return send(ws, { type: 'unavailable', reason: 'not-allowed' });
+      if (kind !== 'crew') { // calls between Earth and an astronaut exist only near Earth; farther out: messages and video instead
+        const aid = who.role === 'family' ? who.uid : (who.admin ? Number(to.startsWith('u:') ? to.slice(2) : 0) : who.uid);
+        const au = aid ? db.prepare('SELECT environment, mission_goal FROM users WHERE id = ?').get(aid) : null;
+        if (au && !liveCallOk(au)) return send(ws, { type: 'unavailable', reason: 'no-live-link' });
+      }
       const c = { id: newId(), kind, a: who.key, b: to, aws: ws, bws: null, state: 'ringing' }; calls.set(c.id, c);
       const targets = to === 'doctors' ? adminKeys() : [to];
       let n = 0; for (const k of targets) n += notify(k, { type: 'incoming', callId: c.id, from: who.key, fromName: nameOf(who), kind, group: to === 'doctors' });

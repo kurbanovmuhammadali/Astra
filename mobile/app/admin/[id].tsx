@@ -117,7 +117,7 @@ export default function CrewDetail() {
       <PageHead kicker={`${u.mission}${u.missionYears ? ` · ${u.missionYears} y` : ''}`} title={u.name} sub={u.email} style={{ marginTop: 6 }} />
 
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Button small icon={Phone} title={`Call ${u.name.split(' ')[0]}`} disabled={live.busy} onPress={() => live.call(`u:${u.id}`, 'doctor', u.name)} />
+        {(u as any).liveCalls === false ? <Tag label={`Signal ${Math.round((u as any).linkDelayMin)} min one way: messages only`} tone="watch" /> : <Button small icon={Phone} title={`Call ${u.name.split(' ')[0]}`} disabled={live.busy} onPress={() => live.call(`u:${u.id}`, 'doctor', u.name)} />}
         <Button small kind="secondary" title="Watch camera" onPress={() => setTab('live')} />
       </View>
       <View style={{ marginTop: 12 }}><Segmented value={tab} onChange={setTab} options={[{ key: 'overview', label: 'Overview' }, { key: 'live', label: 'Live' }, { key: 'plan', label: 'Plan' }, { key: 'file', label: 'File' }]} /></View>

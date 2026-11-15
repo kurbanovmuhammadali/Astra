@@ -30,7 +30,38 @@ test('delay-tolerant voice messages: astronaut to doctors, doctor back to the as
   assert.equal((await crew('GET', '/api/voicemail')).body.messages.length, 0);
 });
 test('too long recordings are refused', async () => {
-  const big = 'data:audio/webm;base64,' + 'A'.repeat(700_000);
+  const big = 'data:audio/webm;base64,' + 'A'.repeat(4_300_000);
   assert.equal((await crew('POST', '/api/voicemail', { to: 'doctors', audio: big, seconds: 90 })).status, 413);
 });
 test.after(() => srv.close());
+
+test('text and video messages; the link class decides whether live calls exist at all', async () => {
+  const { liveCallOk, delayMinFor } = await import('../src/linkdelay.js');
+  assert.equal(liveCallOk({ environment: 'station' }), true);                    // ISS: live calls fine
+  assert.equal(liveCallOk({ environment: 'lunar' }), true);                      // Moon: 1.3 s one way, still a conversation
+  assert.equal(liveCallOk({ environment: 'mars' }), false);                      // Mars: 12 minutes one way: messages only
+  assert.equal(liveCallOk({ environment: 'station', mission_goal: JSON.stringify({ dest: 'jupiter' }) }), false); // the goal beats the habitat
+  assert.equal(delayMinFor({ environment: 'mars' }), 12);
+  const t = await crew('POST', '/api/voicemail', { to: 'doctors', kind: 'text', text: 'Headache since morning, vision slightly blurred.', urgent: true });
+  assert.equal(t.status, 200);
+  const v = await crew('POST', '/api/voicemail', { to: 'doctors', kind: 'video', media: 'data:video/webm;codecs=vp8,opus;base64,' + Buffer.from('fake-video').toString('base64'), seconds: 20 });
+  assert.equal(v.status, 200);
+  assert.equal((await crew('POST', '/api/voicemail', { to: 'doctors', kind: 'video', media: 'data:audio/webm;base64,QUJD' })).status, 400); // a "video" that is audio
+  const inbox = await doc('GET', '/api/voicemail');
+  assert.ok(inbox.body.messages.some(m => m.kind === 'text' && m.urgent && /Headache/.test(m.text)));
+  assert.equal(inbox.body.messages[0].urgent, true); // urgent first
+  const vid = await doc('GET', `/api/voicemail/${v.body.id}/media`, null, true); assert.match(vid.headers.get('content-type'), /video\/webm/);
+  assert.ok((await crew('GET', '/api/voicemail')).body.outbox.length >= 2);
+});
+test('with LINK_DELAY_SIM on, a message is held for the signal time', async () => {
+  process.env.LINK_DELAY_SIM = 'on';
+  const { db } = await import('../src/db.js');
+  const meId = db.prepare("SELECT id FROM users WHERE email = 'crew@test.local'").get().id;
+  db.prepare("UPDATE users SET environment = 'mars', mission_goal = NULL WHERE id = ?").run(meId);
+  const r = await crew('POST', '/api/voicemail', { to: 'doctors', kind: 'text', text: 'Mars message' });
+  assert.equal(r.body.inTransit, true);
+  assert.ok(!(await doc('GET', '/api/voicemail')).body.messages.some(m => m.text === 'Mars message')); // not delivered yet
+  assert.ok((await crew('GET', '/api/voicemail')).body.outbox.some(m => m.text === 'Mars message' && m.inTransit));
+  process.env.LINK_DELAY_SIM = 'off';
+  db.prepare("UPDATE users SET environment = 'station' WHERE id = ?").run(meId);
+});

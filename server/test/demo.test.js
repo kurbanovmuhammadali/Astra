@@ -20,6 +20,11 @@ test('one-click demo sign-in for astronaut, doctor and team leader', async () =>
   const l = await lead('POST', '/api/demo/login', { as: 'leader' });
   assert.equal(l.body.user.role, 'leader'); assert.equal(l.body.user.admin, true); assert.equal(l.body.user.leader, true);
 });
+test('the Mars demo astronaut has messages only, the ISS demo astronaut has live calls', async () => {
+  const a = await astro('GET', '/api/auth/me'); assert.equal(a.body.user.liveCalls, false); assert.equal(a.body.user.linkDelayMin, 12);
+  const iss = jar(); const m = await iss('POST', '/api/demo/login', { as: 'astronaut-iss' });
+  assert.equal(m.body.user.liveCalls, true); assert.equal(m.body.user.linkDelayMin, 0);
+});
 test('the demo astronaut has data, a health file the SI can read, a crew and reports', async () => {
   const dash = await astro('GET', '/api/dashboard'); assert.equal(dash.status, 200); assert.ok(dash.body.readiness > 0);
   const bg = await astro('GET', '/api/me/background');

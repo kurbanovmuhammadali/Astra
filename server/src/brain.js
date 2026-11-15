@@ -95,7 +95,7 @@ export function datasetFor(userId) {
   const adj = db.prepare("SELECT id, day, kind, title, status, by FROM plan_adjustments WHERE user_id = ? AND status IN ('applied','proposed') AND (day IS NULL OR day >= date('now','-1 day')) ORDER BY day LIMIT 12").all(userId);
   const checks = db.prepare('SELECT symptoms, note, recorded_at FROM checkins WHERE user_id = ? ORDER BY recorded_at DESC LIMIT 3').all(userId).map(c => { let s = []; try { s = JSON.parse(c.symptoms); } catch {} return { at: c.recorded_at, symptoms: s, note: c.note ? str(c.note, 120) : null }; });
   return {
-    person: { name: u?.name, mission: u?.mission, missionYears: u?.mission_years, heightCm: u?.height_cm, weightKg: u?.weight_kg },
+    person: { isAdmin: !!isAdminUser(db.prepare('SELECT id, email, role FROM users WHERE id = ?').get(userId) ?? {}), name: u?.name, mission: u?.mission, missionYears: u?.mission_years, heightCm: u?.height_cm, weightKg: u?.weight_kg },
     healthFile: { allergies: b.allergies || null, medications: b.medications || null, conditions: (b.conditions ?? []).map(c => `${c.name}${c.notes ? ` (${c.notes})` : ''}`), shared: !!b.sharedConsent },
     doctorNotes: notes, norms, doctorPlan: plan ? { intensity: plan.intensity ?? null, message: plan.message ?? null, resistancePerWeek: plan.resistancePerWeek ?? null, zone2Minutes: plan.zone2Minutes ?? null } : null,
     readings: latestReadings(userId), lastAnalysis: last ?? null, planChanges: adj, recentCheckins: checks,
@@ -145,13 +145,13 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/, HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 export function extractProposals(text) {
   const m = /<proposals>([\s\S]*?)<\/proposals>/i.exec(String(text || ''));
   let list = []; if (m) { try { const j = JSON.parse(m[1]); list = Array.isArray(j) ? j : []; } catch {} }
-  return { text: String(text || '').replace(/<proposals>[\s\S]*?<\/proposals>/gi, '').trim(), list: list.slice(0, 2) };
+  return { text: String(text || '').replace(/<proposals>[\s\S]*?<\/proposals>/gi, '').trim(), list: list.slice(0, 8) };
 }
 /** Verifies each proposal against the dataset, stores the good ones as 'proposed'. */
 export function storeProposals(userId, list, { userAsked = false } = {}) {
   const ds = datasetFor(userId), la = ds.lastAnalysis, first = today(), limit = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
   const out = [];
-  for (const p of list) {
+  for (const p of list.filter(x => !['log', 'profile'].includes(x?.type)).slice(0, 2)) {
     const kind = String(p?.type || '');
     if (!KINDS.has(kind)) continue;
     const day = kind === 'norm' ? null : String(p?.day || '');
@@ -197,6 +197,7 @@ export function mountBrain(app) {
     if (!row || row.kind === 'norm') return bad(res, 'Not found.', 404);
     if (row.status !== 'proposed') return bad(res, 'Already decided.', 409);
     const apply = req.body?.action === 'apply';
+    if (apply && row.kind === 'log') { try { const l = JSON.parse(row.detail); db.prepare("INSERT INTO measurements (user_id, metric, value, value2, unit, source, recorded_at) VALUES (?,?,?,?,?, 'manual', datetime('now'))").run(row.user_id, l.metric, l.value, l.value2 ?? null, METRICS[l.metric]?.unit ?? ''); } catch { return bad(res, 'Bad entry.'); } }
     if (apply && /needs doctor approval/.test(row.detail)) return bad(res, 'The doctor has to approve this one.', 403);
     db.prepare("UPDATE plan_adjustments SET status = ?, decided_at = datetime('now') WHERE id = ?").run(apply ? 'applied' : 'dismissed', row.id);
     res.json({ ok: true, status: apply ? 'applied' : 'dismissed' });
@@ -246,4 +247,70 @@ export function mountBrain(app) {
     db.prepare("UPDATE plan_adjustments SET status = ?, decided_at = datetime('now') WHERE id = ?").run(apply ? 'applied' : 'dismissed', row.id);
     res.json({ ok: true });
   });
+}
+
+// ---- the person tells the SI a reading ("my radiation is 0.40, heart rate 72"): the SI records it ------------------------------
+const LOGGABLE = { rhr: [25, 220], radiation: [0, 50], spo2: [50, 100], temp: [30, 43], glucose: [20, 600], weight: [25, 300], hrv: [1, 400], sleep: [0.5, 20], bp: [60, 260] };
+const numbersIn = t => (String(t).match(/\d+(?:[.,]\d+)?/g) ?? []).map(x => Number(x.replace(',', '.')));
+/** Records readings the SI was given, but ONLY numbers the person actually wrote in their message (the model cannot invent a reading). */
+export function applyLogs(actor, list, userText, { fileText = '', binaryFile = false } = {}) {
+  const said = numbersIn(userText), fromFile = numbersIn(fileText), out = [], pending = [], denied = [];
+  const ins = db.prepare("INSERT INTO measurements (user_id, metric, value, value2, unit, source, recorded_at) VALUES (?,?,?,?,?, 'manual', datetime('now'))");
+  for (const p of list) {
+    if (p?.type !== 'log') continue;
+    const metric = String(p.metric || ''), range = LOGGABLE[metric];
+    const value = Number(p.value), value2 = p.value2 == null ? null : Number(p.value2);
+    if (!range || !Number.isFinite(value) || value < range[0] || value > range[1]) continue;
+    if (metric === 'bp' && !(Number.isFinite(value2) && value2 >= 30 && value2 <= 160)) continue;
+    const t = resolveTarget(actor, p.for);
+    if (t.denied) { denied.push('another astronaut'); continue; }
+    if (t.missing) continue;
+    const userId = t.id, has = (arr, n) => arr.some(x => Math.abs(x - n) < 1e-9);
+    const ok = (arr) => has(arr, value) && (metric !== 'bp' || has(arr, value2));
+    if (!ok([...said, ...fromFile])) {
+      if (binaryFile && userId === actor.id) { // a number read from a PDF / photo cannot be checked here: the person confirms it first
+        const label = METRICS[metric]?.label ?? metric;
+        const id = db.prepare("INSERT INTO plan_adjustments (user_id, day, kind, title, detail, status, by) VALUES (?,NULL,'log',?,?, 'proposed', 'si')").run(userId, `Record ${label}: ${value}${metric === 'bp' ? '/' + value2 : ''} ${METRICS[metric]?.unit ?? ''}`.trim(), JSON.stringify({ metric, value, value2: metric === 'bp' ? value2 : null })).lastInsertRowid;
+        pending.push({ id: Number(id), kind: 'log', day: null, title: `Record ${label}: ${value}${metric === 'bp' ? '/' + value2 : ''} ${METRICS[metric]?.unit ?? ''}`.trim(), detail: 'Read from your file. Check it, then apply.' });
+      }
+      continue;
+    }
+    ins.run(userId, metric, value, metric === 'bp' ? value2 : null, METRICS[metric]?.unit ?? '');
+    out.push({ metric, value, value2: metric === 'bp' ? value2 : null, unit: METRICS[metric]?.unit ?? '', label: METRICS[metric]?.label ?? metric });
+  }
+  return Object.assign(out, { pending, denied });
+}
+
+// ---- who the SI may change data for --------------------------------------------------------------------------------------------------
+/** The SI acts for the signed-in person only. Only a doctor / team leader (admin) may name another astronaut. */
+export function resolveTarget(actor, forName) {
+  const name = String(forName || '').trim();
+  if (!name || name.toLowerCase() === String(actor.name).toLowerCase()) return { id: actor.id };
+  if (!isAdminUser(actor)) return { denied: true };
+  const rows = db.prepare("SELECT id, name FROM users WHERE role IN ('astronaut','analog') AND lower(name) = lower(?)").all(name);
+  if (rows.length === 1) return { id: rows[0].id, name: rows[0].name };
+  return { missing: true };
+}
+import { isAdmin as isAdminUser } from './roles.js';
+
+const FIELD = { allergies: 500, medications: 500 };
+/** Adds allergies / medications / a health condition to a health file. Returns what changed. */
+export function applyProfile(actor, list, { userAsked = false } = {}) {
+  const done = [], denied = [];
+  for (const p of list) {
+    if (p?.type !== 'profile') continue;
+    const field = String(p.field || ''), text = str(p.text, 160);
+    if (!text || !(field in FIELD || field === 'condition')) continue;
+    const t = resolveTarget(actor, p.for);
+    if (t.denied) { denied.push('another astronaut'); continue; }
+    if (t.missing) continue;
+    if (!userAsked && t.id === actor.id) continue; // the person has to ask for it
+    const row = db.prepare('SELECT data FROM backgrounds WHERE user_id = ?').get(t.id);
+    const b = row ? JSON.parse(row.data) : { cvText: '', characteristics: '', allergies: '', medications: '', conditions: [], sharedConsent: false };
+    if (field === 'condition') { if (!(b.conditions ?? []).some(c => c.name.toLowerCase() === text.toLowerCase())) b.conditions = [...(b.conditions ?? []), { name: text.slice(0, 80), notes: str(p.notes, 200) }].slice(0, 20); else continue; }
+    else { const cur = String(b[field] || ''); if (cur.toLowerCase().includes(text.toLowerCase())) continue; b[field] = (cur ? `${cur}; ${text}` : text).slice(0, FIELD[field]); }
+    db.prepare("INSERT INTO backgrounds (user_id, data, updated_at) VALUES (?,?,datetime('now')) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at").run(t.id, JSON.stringify(b));
+    done.push({ field, text, for: t.id === actor.id ? 'you' : t.name });
+  }
+  return { done, denied };
 }

@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
 import { db } from './db.js';
+import { delayMinFor, liveCallOk } from './linkdelay.js';
 
 export const SESSION_COOKIE = 'pg_session';
 const SESSION_DAYS = 30;
@@ -87,7 +88,7 @@ export const publicUser = u => ({
   id: u.id, email: u.email, name: u.name, dob: u.dob, role: u.role, mission: u.mission,
   environment: u.environment, missionYears: u.mission_years ?? null,
   heightCm: u.height_cm ?? null, weightKg: u.weight_kg ?? null, missionGoal: parseGoal(u.mission_goal),
-  leader: u.role === 'leader', demo: /@demo\.celeste$/i.test(String(u.email)),
+  leader: u.role === 'leader', linkDelayMin: delayMinFor(u), liveCalls: liveCallOk(u), demo: /@demo\.celeste$/i.test(String(u.email)),
   admin: ['surgeon', 'leader'].includes(u.role) || (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean).includes(String(u.email).toLowerCase()),
   passwordless: u.password_hash === '!', createdAt: u.created_at,
 });
