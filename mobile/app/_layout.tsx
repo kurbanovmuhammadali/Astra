@@ -12,6 +12,7 @@ import { DeviceFrame, DeviceInsets, shouldFrame } from '@/DeviceFrame';
 import LaptopPanels from '@/LaptopPanels';
 import { BootSkeleton, PageSkeleton, ToastHost, skeletonKind } from '@/kit/ui';
 import { useAuth } from '@/auth';
+import { DemoGuide } from '@/kit/DemoGuide';
 import { K } from '@/kit/tokens';
 import { loadStore } from '@/data/store';
 import { LiveProvider } from '@/live/Live';
@@ -69,6 +70,7 @@ export default function Root() {
           <Stack.Screen name="log" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         </Stack>
         <CookieBanner />
+        <DemoGuide />
         <LaptopPanels />
         <ToastHost />
         <Boot />
