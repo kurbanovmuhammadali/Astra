@@ -4,7 +4,7 @@
  *   NASA's five hazards (RIDGE), one attention card, "what changed since yesterday",
  *   dose history with coverage gaps, a day-by-day risk timeline and the EVA readiness gates.
  *
- * Synthetic Mars demo (settings.demo, on by default) supplies a scripted, clearly labelled 42-day telemetry set.
+ * No demo data: without WHOOP only hand-entered values are shown, everything else is honestly missing.
  * With demo off only real WHOOP values (via the server) are shown — everything else is honestly "missing".
  */
 import { useMemo } from 'react';
@@ -65,7 +65,7 @@ export function buildMission(st0: AppState, crew: ReturnType<typeof useCrew>, us
   const fromYears = yrs == null ? null : yrs <= 1 ? 'iss' : yrs <= 2 ? 'moon' : yrs <= 4 ? 'mars' : 'jupiter';
   const signupDest = (user?.missionGoal?.dest ?? fromYears) as AppState['briefing']['dest'] | null;
   const st: AppState = st0.briefing.custom || !signupDest ? st0 : { ...st0, briefing: { ...st0.briefing, dest: signupDest, commDelayMin: COMM_DELAY[signupDest] } };
-  const demo = st.settings.demo;
+  const demo = false; // the scripted demo is gone: only WHOOP values and what the crew member types in are shown
   const day = crew.missionDay, n = Math.max(14, Math.min(120, day));
   const todayKey = new Date(now).toISOString().slice(0, 10);
   const D = demoSeries(n);

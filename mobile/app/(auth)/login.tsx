@@ -10,7 +10,6 @@ import { useAuth } from '@/auth';
 import { api } from '@/api';
 import FaceScan from '@/kit/FaceScan';
 
-const DEMO_EMAIL = 'crew@astra.demo';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Crew log in: accounts are prepared by the mission, so it's just email → 4-digit code. */
@@ -48,16 +47,6 @@ export default function Login() {
       {scan ? <View style={{ marginTop: 16 }}><FaceScan mode="login" onDone={byFace} onCancel={() => setScan(false)} /></View> : faceOk ? (
         <Press onPress={() => setScan(true)} label="Sign in with my face" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 16, padding: 14, borderRadius: 18, backgroundColor: A.copper }}>
           <T size={15} weight="m" color="#fff">Sign in with my face</T>
-        </Press>
-      ) : null}
-      {__DEV__ ? (
-        <Press onPress={() => { set({ email: DEMO_EMAIL }); setErr(null); }} label="Use the demo crew account"
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, padding: 12, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.7)', borderWidth: 1, borderColor: A.line }}>
-          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: A.sand2, alignItems: 'center', justifyContent: 'center' }}><Star size={16} /></View>
-          <View style={{ flex: 1 }}>
-            <T size={14} weight="m" color={A.ink}>Use the demo crew account</T>
-            <T size={12} color={A.ink3}>{DEMO_EMAIL} · sample data</T>
-          </View>
         </Press>
       ) : null}
       <T size={13} color={A.ink3} style={{ marginTop: 14, marginLeft: 4 }}>New here? <T size={13} weight="m" color={A.copper} onPress={() => nav.replace('/name')}>Get started</T></T>

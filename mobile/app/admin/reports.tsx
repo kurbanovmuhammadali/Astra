@@ -6,13 +6,11 @@ import { Button, Card, Notice, PageHead, Tag, TopBar } from '@/kit/ui';
 import { Page } from '@/kit/page';
 import { api } from '@/api';
 import { useApi } from '@/useApi';
-import { useDemoAdmin } from '@/DemoLogin'; // DEMO-ONLY
 
 type R = { id: number; category: string; message: string; status: string; at: string; aboutId: number; about: string; crew: string; voices: number };
 /** Anonymous concerns raised by crew mates. The author is never stored in a readable form; "voices" counts different people. */
 export default function Reports() {
   const { data, reload } = useApi<{ reports: R[]; open: number }>('/api/admin/reports');
-  useDemoAdmin(reload); // DEMO-ONLY
   return (
     <Page title="Crew concerns" maxWidth={760} onRefresh={reload} header={<TopBar title="Crew concerns" />}>
       <PageHead kicker="Anonymous" title="What the crew noticed" sub="Concerns about a crew mate, written without a name. Several different people raising the same person is a stronger signal. Check on the person; do not reveal the source." style={{ marginTop: 6 }} />

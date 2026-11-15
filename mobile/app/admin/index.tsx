@@ -10,7 +10,6 @@ import { Button } from '@/kit/ui';
 import { Page } from '@/kit/page';
 import { useAuth } from '@/auth';
 import { useApi } from '@/useApi';
-import { useDemoAdmin } from '@/DemoLogin'; // DEMO-ONLY
 import { useLive } from '@/live/Live';
 import type { Incident } from '@/live/Live';
 
@@ -40,11 +39,10 @@ export default function AdminHome() {
   const { data, error, reload } = useApi<{ crew: CrewRow[] }>('/api/admin/crew');
   const { data: inc, reload: reloadInc } = useApi<{ incidents: Incident[]; active: number }>('/api/admin/incidents');
   const { data: rep } = useApi<{ open: number }>('/api/admin/reports');
-  useDemoAdmin(() => { reload(); reloadInc(); }); // DEMO-ONLY
   const [filter, setFilter] = useState<'all' | 'attention' | 'handoffs'>('all');
   const [sel, setSel] = useState<number | null>(null);
   const all = [...(data?.crew ?? [])].sort((a, b) => (b.openHandoffs ?? 0) - (a.openHandoffs ?? 0) || b.alerts.red - a.alerts.red || a.readiness - b.readiness);
-  const crew = all.filter(c => filter === 'all' || (filter === 'attention' ? c.alerts.red > 0 || c.readiness < 50 : (c.openHandoffs ?? 0) > 0));
+  const crew = all.filter(c => filter === 'all' || (filter === 'attention' ? c.alerts.red > 0 || (c.readiness > 0 && c.readiness < 50) : (c.openHandoffs ?? 0) > 0));
   const picked = all.find(c => c.id === sel) ?? null;
   const denied = user && user.role !== 'surgeon';
   const hand = all.reduce((a, c) => a + (c.openHandoffs ?? 0), 0), attention = all.filter(c => c.alerts.red > 0).length, active = (inc?.incidents ?? []).filter(i => i.status === 'active');
@@ -82,7 +80,7 @@ export default function AdminHome() {
             <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: K.hair, gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={{ flex: 1 }}><Txt v="headline">{picked.name}</Txt><Txt v="caption" color={K.ink2}>{picked.mission}{picked.missionYears ? ` · ${picked.missionYears} y` : ''}</Txt></View>
-                <Tag label={`Readiness ${picked.readiness}`} tone={tone(picked.readiness)} />
+                <Tag label={picked.readiness ? `Readiness ${picked.readiness}` : 'No data yet'} tone={picked.readiness ? tone(picked.readiness) : 'none'} />
               </View>
               <Txt v="sub" color={K.ink2}>{picked.snapshot ? `Stress ${picked.snapshot.stress?.level ?? 'n/a'} · ${picked.snapshot.sessionsThisWeek ?? 0} sessions this week${picked.snapshot.radiation?.rate != null ? ` · ${picked.snapshot.radiation.rate.toFixed(2)} mSv/day` : ''}` : 'The astronaut app has not reported yet.'}</Txt>
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>

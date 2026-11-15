@@ -16,17 +16,15 @@ export type DayView = {
   steps: number | null; kcal: number | null;
 };
 
-const SAMPLE = {
-  recovery: [56, 61, 69, 58, 65, 51, 47], sleep: [6.2, 6.77, 7.3, 6.58, 7.08, 6.35, 5.8], hrv: [53, 55, 59, 53, 57, 51, 50],
-  rhr: [58, 57, 56, 59, 58, 60, 61], workoutHr: [112, 121, 116, 0, 0, 119, 118], workoutMin: [35, 62, 30, 0, 0, 40, 32], dose: [0.39, 0.42, 0.37, 0.51, 0.4, 0.45, 0.43],
-  steps: [8120, 10230, 7650, 4310, 5120, 9840, 9245], kcal: [1822, 2105, 1690, 1214, 1352, 1980, 1648],
-};
+/** No sample values anywhere: without WHOOP (or hand entries) every series is empty and the screens say so. */
+const none = (n: number) => Array(n).fill(null) as (number | null)[];
+const SAMPLE = { recovery: none(7), sleep: none(7), hrv: none(7), rhr: none(7), workoutHr: none(7), workoutMin: none(7), dose: none(7), steps: none(7), kcal: none(7) };
 
 /** Active calories for the last 28 days (oldest first) — sample until Apple Health activity is connected. */
-export const ACTIVITY_28 = Array.from({ length: 28 }, (_, i) => (i >= 21 ? SAMPLE.kcal[i - 21] : Math.round(1500 + 520 * Math.sin(i * 1.7) * Math.cos(i * 0.6) + (i % 7 === 3 ? -380 : 0))));
+export const ACTIVITY_28: (number | null)[] = Array(28).fill(null);
 
-const pad7 = (a: (number | null)[] | undefined, fallback: number[]) => {
-  if (!a || !a.length || a.every(v => v == null)) return fallback.map(v => v as number | null);
+const pad7 = (a: (number | null)[] | undefined, fallback: (number | null)[]) => {
+  if (!a || !a.length || a.every(v => v == null)) return fallback.slice();
   const s = a.slice(-7);
   return [...Array(Math.max(0, 7 - s.length)).fill(null), ...s];
 };
@@ -47,11 +45,11 @@ export function useCrew() {
     const series = {
       recovery: pad7(m.recovery?.spark, SAMPLE.recovery), sleep: pad7(m.sleep?.spark, SAMPLE.sleep), hrv: pad7(m.hrv?.spark, SAMPLE.hrv),
       rhr: pad7(m.rhr?.spark, SAMPLE.rhr), workoutMin: pad7(m.exercise?.spark ? m.exercise.spark.map(v => (v == null ? null : Math.round(v / 4))) : undefined, SAMPLE.workoutMin),
-      workoutHr: SAMPLE.workoutHr.map(v => v || null), dose: pad7(m.radiation?.spark, SAMPLE.dose),
-      steps: SAMPLE.steps.map(v => v as number | null), kcal: SAMPLE.kcal.map(v => v as number | null),
+      workoutHr: none(7), dose: pad7(m.radiation?.spark, SAMPLE.dose),
+      steps: none(7), kcal: none(7),
     };
     // Full-length history (oldest → newest) for personal baselines. Server sparks keep more than 7 days.
-    const hist = (k: string, fb: number[]): (number | null)[] => (m[k]?.spark?.some(v => v != null) ? m[k].spark : fb);
+    const hist = (k: string, fb: (number | null)[]): (number | null)[] => (m[k]?.spark?.some(v => v != null) ? m[k].spark : [...none(21), ...fb]);
     const history = { recovery: hist('recovery', SAMPLE.recovery), sleep: hist('sleep', SAMPLE.sleep), hrv: hist('hrv', SAMPLE.hrv), rhr: hist('rhr', SAMPLE.rhr) };
     const handMode = dataMode === 'manual' && !judge;
     if (handMode) { // data by hand: only what the crew member typed in. No sample or demo values, gaps stay gaps.
@@ -87,7 +85,7 @@ export function useCrew() {
     const missionDay = Math.max(1, Math.floor((Date.now() - start.getTime()) / 864e5) + 1);
     const duration = Number(profile.duration) || 180;
     const doses = series.dose.filter((v): v is number => v != null);
-    const avgDose = doses.length ? doses.reduce((a, b) => a + b, 0) / doses.length : 0.43;
+    const avgDose = doses.length ? doses.reduce((a, b) => a + b, 0) / doses.length : 0;
     // Cumulative dose is only shown when every mission day has a reading; otherwise null ("Cumulative dose unavailable").
     const serverRad = !!m.radiation?.source && m.radiation.source !== 'demo';
     const perDay = judge ? scenarioPerDay(missionDay) : radEntries.length ? entriesToPerDay(radEntries) : handMode ? {} : seriesToPerDay(series.dose);
@@ -95,7 +93,7 @@ export function useCrew() {
     const lastAt = judge ? Date.now() : radEntries.length ? Math.max(...radEntries.map(e => e.at)) : Date.now();
     const radiation = radiationSummary(perDay, missionDay, radSource, lastAt);
     const doseTotal = radiation.cumulative;
-    const isSample = judge || (!handMode && (sampleOnly || [m.recovery, m.sleep, m.hrv].some(s => !s || s.source === 'demo')));
+    const isSample = false; // there is no sample data any more
     const stress = computeStress(history, man);
     const hrvSrc = judge ? 'synthetic' : src('hrv');
     const hrvMethod = hrvSrc.toLowerCase().includes('whoop') ? 'RMSSD (WHOOP)' : judge ? 'RMSSD (synthetic)' : 'RMSSD (sample)';

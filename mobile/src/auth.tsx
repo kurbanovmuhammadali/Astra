@@ -10,7 +10,6 @@ type Ctx = {
   requestCode: (email: string, purpose: CodePurpose) => Promise<{ devCode?: string }>;
   verifyCode: (email: string, purpose: CodePurpose, code: string, profile?: Record<string, unknown>) => Promise<User>;
   logout: () => Promise<void>;
-  demoLogin: (as: 'crew' | 'admin') => Promise<User>; // DEMO-ONLY
   faceLogin: (email: string, descriptor: number[]) => Promise<User>;
   refresh: () => Promise<void>;
   setUser: (u: User | null) => void;
@@ -32,10 +31,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const requestCode = (email: string, purpose: CodePurpose) => api<{ devCode?: string }>('/api/auth/code', { body: { email, purpose } });
   const verifyCode = async (email: string, purpose: CodePurpose, code: string, profile?: Record<string, unknown>) =>
     done(await api('/api/auth/code/verify', { body: { email, purpose, code, profile } }));
-  const demoLogin = async (as: 'crew' | 'admin') => done(await api('/api/demo/login', { body: { as } })); // DEMO-ONLY
   const faceLogin = async (email: string, descriptor: number[]) => done(await api('/api/auth/face/login', { body: { email, descriptor, live: true } }));
   const logout = async () => { try { await api('/api/auth/logout', { method: 'POST' }); } catch {} await setToken(null); setUser(null); };
 
-  return <AuthCtx.Provider value={{ user, ready, login, register, requestCode, verifyCode, logout, demoLogin, faceLogin, refresh, setUser }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, ready, login, register, requestCode, verifyCode, logout, faceLogin, refresh, setUser }}>{children}</AuthCtx.Provider>;
 }
 export const useAuth = () => useContext(AuthCtx);

@@ -247,8 +247,8 @@ function ActivityDot({ k, value, max, today }: { k: number; value: number; max: 
   );
 }
 
-function ActivityCard({ kcal, days }: { kcal: number | null; days: number[] }) {
-  const max = Math.max(...days);
+function ActivityCard({ kcal, days }: { kcal: number | null; days: (number | null)[] }) {
+  const max = Math.max(1, ...days.map(x => x ?? 0));
   const rows = [0, 1, 2, 3].map(r => days.slice(r * 7, r * 7 + 7));
   return (
     <Card onPress={() => router.navigate(TRAINING_HREF)} label={`Activity ${kcal ?? 0} kilocalories`} pad={14} style={{ minHeight: 236 }}>
@@ -263,7 +263,7 @@ function ActivityCard({ kcal, days }: { kcal: number | null; days: number[] }) {
       <View style={{ marginTop: 12, gap: 7 }}>
         {rows.map((row, r) => (
           <View key={r} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            {row.map((d, c) => <ActivityDot key={c} k={r * 7 + c} value={d} max={max} today={r === 3 && c === 6} />)}
+            {row.map((d, c) => <ActivityDot key={c} k={r * 7 + c} value={d ?? 0} max={max} today={r === 3 && c === 6} />)}
           </View>
         ))}
       </View>

@@ -158,7 +158,7 @@ export async function loadStore() {
   if (loaded) return;
   loaded = true;
   const saved = await read();
-  if (saved) { const i = initial(); state = { ...i, ...saved, profile: { ...i.profile, ...saved.profile }, settings: { ...i.settings, ...(saved as any).settings }, briefing: { ...i.briefing, ...(saved as any).briefing } }; }
+  if (saved) { const i = initial(); state = { ...i, ...saved, profile: { ...i.profile, ...saved.profile }, settings: { ...i.settings, ...(saved as any).settings, demo: false, judge: false }, briefing: { ...i.briefing, ...(saved as any).briefing } }; }
   subs.forEach(f => f());
 }
 

@@ -12,7 +12,6 @@ import { Page } from '@/kit/page';
 import { Field } from '@/kit/fields';
 import { api, API_URL } from '@/api';
 import { useApi } from '@/useApi';
-import { useDemoAdmin } from '@/DemoLogin'; // DEMO-ONLY
 import { DAYS } from '@/data/override';
 import type { DayKey, Override } from '@/data/override';
 import { SESSIONS } from '@/data/training';
@@ -73,7 +72,6 @@ function Handoffs({ list, uid, onDone }: { list: NonNullable<Detail['handoffs']>
 export default function CrewDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, error, reload } = useApi<Detail>(`/api/admin/crew/${id}`);
-  useDemoAdmin(reload); // DEMO-ONLY
   const [msg, setMsg] = useState('');
   const [res, setRes] = useState<number | undefined>();
   const [z2, setZ2] = useState<number | undefined>();
@@ -114,7 +112,7 @@ export default function CrewDetail() {
   const u = data.user, snap = data.snapshot, bg = data.background;
 
   return (
-    <Page title={u.name} maxWidth={820} onRefresh={reload} header={<TopBar title={u.name} right={<Tag label={`Readiness ${data.readiness}`} tone={data.readiness >= 67 ? 'ok' : data.readiness >= 34 ? 'watch' : 'flag'} />} />}>
+    <Page title={u.name} maxWidth={820} onRefresh={reload} header={<TopBar title={u.name} right={<Tag label={`${data.readiness ? 'Readiness ' + data.readiness : 'No data yet'}`} tone={!data.readiness ? 'none' : data.readiness >= 67 ? 'ok' : data.readiness >= 34 ? 'watch' : 'flag'} />} />}>
       <PageHead kicker={`${u.mission}${u.missionYears ? ` · ${u.missionYears} y` : ''}`} title={u.name} sub={u.email} style={{ marginTop: 6 }} />
 
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>

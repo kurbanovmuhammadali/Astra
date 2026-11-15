@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { A } from '@/theme';
 import { T } from '@/ui';
 import { AstraLogo, Floaty, IMG, Pill, RATIO } from '@/astra';
-import DemoLogin from '@/DemoLogin'; // DEMO-ONLY
 import { draft } from '@/onboarding';
 
 const native = Platform.OS !== 'web';
@@ -52,7 +51,6 @@ export default function Welcome() {
             <View style={{ flex: 1, height: 1, backgroundColor: A.line }} /><T size={13} color={A.ink3}>or</T><View style={{ flex: 1, height: 1, backgroundColor: A.line }} />
           </View>
           <Pill title="Get started" kind="outline" onPress={() => { draft.reset(); nav.push('/name'); }} />
-          <DemoLogin />{/* DEMO-ONLY */}
         </Animated.View>
       </View>
       </MotionScreen>

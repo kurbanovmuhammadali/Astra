@@ -74,7 +74,7 @@ export default function Profile() {
     <View style={{ gap: 12, marginTop: wide ? 0 : 12 }}>
       <ListGroup kicker="Settings">
         <ListRow icon={Cable} title="Connected data" sub={`WHOOP ${whoop ? 'connected' : 'not connected'} · Apple Watch ${watch ? 'connected' : 'off'}`} onPress={() => router.push('/profile/connected')} />
-        <ListRow icon={Presentation} title="Demo & presentation" sub={`${settings.demo ? 'Synthetic demo on' : 'Real data only'}${settings.judge ? ' · judge mode' : ''}`} onPress={() => router.push('/profile/presentation')} />
+        <ListRow icon={Presentation} title="Drills & camera" sub="Emergency drill · camera station" onPress={() => router.push('/profile/presentation')} />
         <ListRow icon={UserCog} title="Account" sub="Privacy, flight surgeon, research, sign out" onPress={() => router.push('/profile/account')} />
       </ListGroup>
       {user.admin || user.role === 'surgeon' ? <ListGroup kicker="Flight surgeon"><ListRow icon={Stethoscope} title="Surgeon console" sub="Crew overview, alerts, concerns, plans" onPress={() => router.push('/admin')} /></ListGroup> : null}
