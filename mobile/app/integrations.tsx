@@ -4,7 +4,8 @@
  *   · 5 Back in Celeste the first sync runs. The current step lights up; when connected: Sync now / Disconnect.
  * Other sources (demo dataset, Apple Health, dosimeter, labs) are listed compactly underneath with their status.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { setStore } from '@/data/store';
 import { Platform, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -47,11 +48,12 @@ function Step({ n, title, sub, state, last }: { n: number; title: string; sub: s
 }
 
 export default function Integrations() {
-  const q = useLocalSearchParams<{ whoop?: string }>();
+  const q = useLocalSearchParams<{ whoop?: string; imported?: string; reason?: string }>();
   const { data, reload } = useApi<{ providers: P[] }>('/api/integrations');
   const [msg, setMsg] = useState<{ tone: 'ok' | 'flag' | 'watch'; text: string } | null>(
-    q.whoop === 'connected' ? { tone: 'ok', text: 'WHOOP connected and synced.' } : q.whoop ? { tone: 'flag', text: 'WHOOP connection was not completed. Try again from step 2.' } : null);
+    q.whoop === 'connected' ? (q.reason ? { tone: 'watch', text: `WHOOP is connected, but the first import failed: ${q.reason}. Press Sync now.` } : { tone: Number(q.imported) > 0 ? 'ok' : 'watch', text: Number(q.imported) > 0 ? `WHOOP connected. Imported ${q.imported} values.` : 'WHOOP connected, but it has no scored data yet. Press Sync now in a minute.' }) : q.whoop ? { tone: 'flag', text: 'WHOOP connection was not completed. Try again from step 2.' } : null);
   const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => { if (q.whoop === 'connected') setStore(s => ({ ...s, dataMode: 'whoop' })); }, [q.whoop]); // connecting WHOOP switches the app from hand-entry to WHOOP data
   const run = async (k: string, fn: () => Promise<void>) => { setBusy(k); try { await fn(); } catch (e: any) { setMsg({ tone: 'flag', text: e.message }); } finally { setBusy(null); reload(); } };
   const connectWhoop = () => run('whoop', async () => {
     const { url } = await api<{ url: string }>('/api/integrations/whoop/start', { body: { platform: Platform.OS === 'web' ? 'web' : 'native' } });
@@ -59,7 +61,12 @@ export default function Integrations() {
     const r = await WebBrowser.openAuthSessionAsync(url, Linking.createURL('integrations'));
     if (r.type === 'success') setMsg({ tone: 'ok', text: 'WHOOP connected and synced.' });
   });
-  const syncWhoop = () => run('whoop', async () => { const r = await api<{ imported: number }>('/api/integrations/whoop/sync', { method: 'POST' }); setMsg({ tone: 'ok', text: `Imported ${r.imported} WHOOP values.` }); });
+  const syncWhoop = () => run('whoop', async () => {
+    const r = await api<{ imported: number; recoveries: number; recoveriesScored: number; calibrating: number; sleeps: number; sleepsScored: number }>('/api/integrations/whoop/sync', { method: 'POST' });
+    setStore(s => ({ ...s, dataMode: 'whoop' }));
+    if (r.imported > 0) setMsg({ tone: 'ok', text: `Imported ${r.imported} WHOOP values.` });
+    else setMsg({ tone: 'watch', text: r.recoveries + r.sleeps === 0 ? 'WHOOP sent nothing for the last 30 days. Wear the strap and sync in the WHOOP app first.' : r.calibrating ? 'WHOOP is still calibrating your recovery (first days of wear). Sleep and recovery appear once WHOOP scores them.' : 'WHOOP has records but none are scored yet. Try again after you wake up and WHOOP syncs.' });
+  });
   const disconnectWhoop = () => run('whoop', async () => { await api('/api/integrations/whoop', { method: 'DELETE' }); setMsg({ tone: 'watch', text: 'WHOOP disconnected and access revoked.' }); });
   const demo = (on: boolean) => run('demo', async () => { await api('/api/integrations/demo', { method: on ? 'POST' : 'DELETE' }); setMsg({ tone: on ? 'ok' : 'watch', text: on ? 'Demo dataset reloaded (30 days).' : 'Demo data removed. Only your real data remains.' }); });
 

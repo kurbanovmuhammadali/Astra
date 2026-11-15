@@ -1,4 +1,5 @@
 process.env.DB_FILE = ':memory:';
+process.env.DEMO_ACCOUNTS = 'off'; // real-data tests: no demo people
 process.env.CAMERA_STATION = 'on';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -88,8 +89,19 @@ test('camera station: pick an astronaut (no sign-in), film him, the surgeon sees
   assert.equal((await phone('GET', '/api/station/99999/info')).status, 404);
   assert.equal((await phone('POST', `/api/station/${me.id}/stop`, {})).status, 200);
   process.env.CAMERA_STATION = 'off';
-  assert.equal((await phone('GET', '/api/station/crew')).status, 404);
+  assert.equal((await phone('GET', '/api/station/crew')).status, 401);
   assert.equal((await phone('POST', `/api/station/${me.id}/frame`, { image: dataUrl(JPEG) })).status, 404);
+  process.env.CAMERA_STATION = 'on';
+});
+test('camera station when signed in (production style): a doctor films anyone, a crew member only themselves and crew mates', async () => {
+  process.env.CAMERA_STATION = 'off'; // demo shortcut off: only signed-in accounts work
+  const a = await admin('GET', '/api/station/crew'); assert.equal(a.status, 200); assert.ok(a.body.crew.length >= 4);
+  const c = await crew('GET', '/api/station/crew'); assert.equal(c.status, 200);
+  assert.deepEqual(c.body.crew.map(x => x.id), [me.id]); // no crew yet: only themselves
+  assert.equal((await crew('GET', `/api/station/${me.id}/info`)).status, 200);
+  const other = a.body.crew.find(x => x.id !== me.id);
+  assert.equal((await crew('GET', `/api/station/${other.id}/info`)).status, 404);
+  assert.equal((await phone('GET', `/api/station/${me.id}/info`)).status, 404);
   process.env.CAMERA_STATION = 'on';
 });
 test.after(() => srv.close());

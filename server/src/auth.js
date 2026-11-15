@@ -87,7 +87,8 @@ export const publicUser = u => ({
   id: u.id, email: u.email, name: u.name, dob: u.dob, role: u.role, mission: u.mission,
   environment: u.environment, missionYears: u.mission_years ?? null,
   heightCm: u.height_cm ?? null, weightKg: u.weight_kg ?? null, missionGoal: parseGoal(u.mission_goal),
-  admin: u.role === 'surgeon' || (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean).includes(String(u.email).toLowerCase()),
+  leader: u.role === 'leader', demo: /@demo\.celeste$/i.test(String(u.email)),
+  admin: ['surgeon', 'leader'].includes(u.role) || (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean).includes(String(u.email).toLowerCase()),
   passwordless: u.password_hash === '!', createdAt: u.created_at,
 });
 

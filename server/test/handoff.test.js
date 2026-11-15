@@ -1,4 +1,5 @@
 process.env.DB_FILE = ':memory:';
+process.env.DEMO_ACCOUNTS = 'off'; // real-data tests: no demo people
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const { app } = await import('../src/index.js');

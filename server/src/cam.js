@@ -15,10 +15,10 @@
 import { randomBytes } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { db } from './db.js';
-import { requireAuth, rateLimit } from './auth.js';
-import { requireAdmin } from './roles.js';
+import { requireAuth, rateLimit, sessionUser } from './auth.js';
+import { requireAdmin, isAdmin } from './roles.js';
 import { rtcState } from './rtc.js';
-import { raiseIncident, INCIDENT_KINDS } from './team.js';
+import { raiseIncident, INCIDENT_KINDS, crewMateIds } from './team.js';
 import { identify } from './face.js';
 
 db.exec(`
@@ -71,9 +71,18 @@ const lan = () => Object.values(networkInterfaces()).flat().filter(i => i && i.f
 
 export function mountCam(app, port) {
   const isCrew = id => !!db.prepare("SELECT 1 FROM users WHERE id = ? AND role IN ('astronaut','analog')").get(id);
-  // DEMO-ONLY (temporary): the camera station. One hard-coded page (/camera) where an operator picks an astronaut and
-  // films him. No sign-in, so it only works while CAMERA_STATION=on and the server is not in production.
-  const stationOn = () => process.env.CAMERA_STATION === 'on' && process.env.NODE_ENV !== 'production';
+  // The camera station (/camera): a phone or laptop that films crew members. Locally (CAMERA_STATION=on, not production) it
+  // needs no sign-in for demos. In production it needs a signed-in account: a flight surgeon may film anyone, a crew member
+  // only themselves and their own crew mates.
+  const demoStation = () => process.env.CAMERA_STATION === 'on' && process.env.NODE_ENV !== 'production';
+    const stationOn = req => demoStation() || !!sessionUser(req);
+  /** ids this request may film / identify (null = everyone, demo mode only). */
+  const stationIds = req => {
+    if (demoStation()) return null;
+    const u = sessionUser(req)?.user; if (!u) return [];
+    if (isAdmin(u)) return db.prepare("SELECT id FROM users WHERE role IN ('astronaut','analog')").all().map(r => r.id);
+    return [u.id, ...crewMateIds(u.id)];
+  };
 
   /** Frame / meal handlers shared by the private-link route and the station route. `who(req)` returns { id, name } or null. */
   const mount = (prefix, who, notFound, keyOf) => {
@@ -141,21 +150,23 @@ export function mountCam(app, port) {
   mount('/api/cam/:token', req => owner(req.params.token), 'This camera link is not valid.', req => req.params.token);
   mount('/api/station/:id', req => {
     const id = Number(req.params.id);
-    return stationOn() && isCrew(id) ? db.prepare('SELECT id, name FROM users WHERE id = ?').get(id) : null;
-  }, 'The camera station is off, or this astronaut does not exist.', req => `st${req.params.id}:${req.ip}`);
+    const ids = stationIds(req); return stationOn(req) && isCrew(id) && (ids === null || ids.includes(id)) ? db.prepare('SELECT id, name FROM users WHERE id = ?').get(id) : null;
+  }, 'Sign in first. The camera station only films you and your crew (doctors: anyone), and it must be switched on for demos.', req => `st${req.params.id}:${req.ip}`);
   // who is in front of the camera? (probe = 128-number face descriptor computed in the browser)
   app.post('/api/station/identify', (req, res) => {
-    if (!stationOn()) return bad(res, 'The camera station is off.', 404);
+    if (!stationOn(req)) return bad(res, 'Sign in to use the camera station.', 401);
     if (!rateLimit(`stid:${req.ip}`, 600, 60e3)) return bad(res, 'Too many requests.', 429);
     const p = req.body?.descriptor;
     if (!Array.isArray(p) || p.length !== 128 || !p.every(Number.isFinite)) return bad(res, 'Bad face descriptor.');
-    const ids = db.prepare("SELECT id FROM users WHERE role IN ('astronaut','analog')").all().map(r => r.id);
+    const ids = stationIds(req) ?? db.prepare("SELECT id FROM users WHERE role IN ('astronaut','analog')").all().map(r => r.id);
     const hit = identify(p, ids);
     res.json(hit ? { id: hit.id, name: db.prepare('SELECT name FROM users WHERE id = ?').get(hit.id).name, distance: +hit.distance.toFixed(3) } : { id: null });
   });
-  app.get('/api/station/crew', (_req, res) => {
-    if (!stationOn()) return bad(res, 'The camera station is off.', 404);
-    res.json({ crew: db.prepare("SELECT id, name, mission FROM users WHERE role IN ('astronaut','analog') ORDER BY name").all() });
+  app.get('/api/station/crew', (req, res) => {
+    if (!stationOn(req)) return bad(res, 'Sign in to use the camera station.', 401);
+    const ids = stationIds(req);
+    const all = db.prepare("SELECT id, name, mission FROM users WHERE role IN ('astronaut','analog') ORDER BY name").all();
+    res.json({ crew: ids === null ? all : all.filter(c => ids.includes(c.id)) });
   });
 
   // ---- the astronaut ----

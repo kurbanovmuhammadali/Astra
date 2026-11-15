@@ -51,6 +51,7 @@ export default function Welcome() {
             <View style={{ flex: 1, height: 1, backgroundColor: A.line }} /><T size={13} color={A.ink3}>or</T><View style={{ flex: 1, height: 1, backgroundColor: A.line }} />
           </View>
           <Pill title="Get started" kind="outline" onPress={() => { draft.reset(); nav.push('/name'); }} />
+          <T size={13.5} color={A.copper} weight="m" center style={{ marginTop: 16 }} onPress={() => { draft.reset(); nav.push('/doctor'); }}>I’m a doctor · flight surgeon sign-in</T>
         </Animated.View>
       </View>
       </MotionScreen>

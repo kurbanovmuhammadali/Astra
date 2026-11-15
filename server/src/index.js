@@ -1,4 +1,8 @@
 import express from 'express';
+import { isDoctorEmail } from './roles.js';
+import { aiSnapshot, freshenWhoop } from './aidata.js';
+import { mountDemo, demoOn } from './demo-accounts.js';
+import { ttsOn, speakWav, speakable } from './tts.js';
 import { existsSync, readFileSync } from 'node:fs';
 import https from 'node:https';
 import { networkInterfaces } from 'node:os';
@@ -20,7 +24,7 @@ import { mountCam } from './cam.js';
 import { mountTeam } from './team.js';
 import { mountFace } from './face.js';
 import { attachRtc } from './rtc.js';
-import { mountBackground, aiSummary } from './background.js';
+import { mountBackground, aiSummary, aiFiles } from './background.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4000);
@@ -32,6 +36,7 @@ const MIN_AGE = 18;
 export const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
+app.use('/api/assistant', express.json({ limit: '7mb' })); // attachments (a PDF or photo the person chose to send)
 app.use(express.json({ limit: '1mb' }));
 
 // security headers + CORS (credentials only for allow-listed origins)
@@ -63,7 +68,7 @@ const authResponse = (req, res, user) => {
 };
 
 // ------------------------------------------------------------------ meta / legal
-app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), voice: ttsOn(), demoAccounts: demoOn(), mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
 app.get('/api/catalog', (_req, res) => res.json({ metrics: METRICS, systems: SYSTEMS, symptoms: SYMPTOMS }));
 
 // ------------------------------------------------------------------ auth
@@ -107,10 +112,11 @@ const envForYears = y => (y <= 1 ? 'station' : y <= 2 ? 'lunar' : y <= 4 ? 'mars
 
 app.post('/api/auth/code', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
-  const purpose = req.body?.purpose === 'login' ? 'login' : 'signup';
+  const purpose = ['login', 'doctor'].includes(req.body?.purpose) ? req.body.purpose : 'signup';
   if (!EMAIL_RE.test(email)) return bad(res, 'Please enter a valid email.');
   if (!rateLimit(`code:${req.ip}`, 10, 15 * 60e3) || !rateLimit(`code:${email}`, 5, 15 * 60e3)) return bad(res, 'Too many codes requested. Wait a few minutes.', 429);
   const exists = !!db.prepare('SELECT 1 FROM users WHERE email = ?').get(email);
+  if (purpose === 'doctor' && !isDoctorEmail(email, db.prepare('SELECT role FROM users WHERE email = ?').get(email)?.role)) return bad(res, 'This email is not registered as a doctor. Ask the administrator to add it.', 403);
   if (purpose === 'signup' && exists) return bad(res, 'This email already has an account. Use Log in instead.', 409);
   if (purpose === 'login' && !exists) return bad(res, 'We could not find a crew account for this email.', 404);
   const code = String(Math.floor(1000 + Math.random() * 9000));
@@ -139,7 +145,7 @@ app.post('/api/auth/code', async (req, res) => {
 
 app.post('/api/auth/code/verify', (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
-  const purpose = req.body?.purpose === 'login' ? 'login' : 'signup';
+  const purpose = ['login', 'doctor'].includes(req.body?.purpose) ? req.body.purpose : 'signup';
   const code = String(req.body?.code || '');
   const row = db.prepare('SELECT * FROM email_codes WHERE email = ? AND purpose = ?').get(email, purpose);
   if (!row || row.expires_at < Date.now()) return bad(res, 'This code has expired. Request a new one.');
@@ -147,6 +153,22 @@ app.post('/api/auth/code/verify', (req, res) => {
   if (sha256(`${email}:${code}`) !== row.code_hash) {
     db.prepare('UPDATE email_codes SET attempts = attempts + 1 WHERE email = ? AND purpose = ?').run(email, purpose);
     return bad(res, 'That code is not right. Try again.');
+  }
+
+  if (purpose === 'doctor') { // flight surgeon sign-in: allow-listed emails only; first time creates the surgeon account
+    const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!isDoctorEmail(email, existing?.role)) return bad(res, 'This email is not registered as a doctor.', 403);
+    if (!existing) {
+      const dn = String(req.body?.profile?.name || '').trim();
+      if (dn.length < 2) return bad(res, 'Please enter your name.');
+      if (!req.body?.profile?.acceptTerms) return bad(res, 'You need to accept the Terms and Privacy Policy.');
+      tx(() => {
+        const { lastInsertRowid: id } = db.prepare('INSERT INTO users (email, name, password_hash, dob, role, mission, environment) VALUES (?,?,?,?,?,?,?)').run(email, dn.slice(0, 80), '!', '1980-01-01', 'surgeon', 'Flight surgeon', 'station');
+        ['terms', 'privacy', 'health_data'].forEach(k => db.prepare('INSERT INTO consents (user_id, kind, version) VALUES (?,?,?)').run(id, k, LEGAL_VERSION));
+      });
+    }
+    db.prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?').run(email, purpose);
+    return authResponse(req, res, db.prepare('SELECT * FROM users WHERE email = ?').get(email));
   }
 
   if (purpose === 'login') {
@@ -366,7 +388,19 @@ const companionFail = (res, e) => {
 };
 app.post('/api/assistant', requireAuth, async (req, res) => {
   if (!companionGate(req, res)) return;
-  try { res.json(await assistantReply({ ...(req.body ?? {}), background: aiSummary(req.user.id) })); } catch (e) { companionFail(res, e); }
+  try {
+    await freshenWhoop(req.user.id); // active data flow: pull WHOOP first when the last sync is older than 10 minutes
+    res.json(await assistantReply({ ...(req.body ?? {}), background: aiSummary(req.user.id), measured: aiSnapshot(req.user.id), profileFiles: aiFiles(req.user.id) }));
+  } catch (e) { companionFail(res, e); }
+});
+// natural voice for the SI (Gemini text-to-speech); the app falls back to the browser's own voices when this is unavailable
+app.post('/api/assistant/speak', requireAuth, async (req, res) => {
+  if (!ttsOn()) return bad(res, 'Voice is not configured on this server.', 503);
+  if (!rateLimit(`tts:${req.user.id}`, 200, 60 * 60e3)) return bad(res, 'Too much speech this hour.', 429);
+  const text = speakable(req.body?.text);
+  if (!text) return bad(res, 'Nothing to say.');
+  try { const audio = await speakWav(text); res.set({ 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' }).send(audio); }
+  catch (e) { bad(res, 'Voice is unavailable right now.', e?.status === 429 ? 429 : 502); }
 });
 
 // ------------------------------------------------------------------ flight-surgeon console + astronaut background
@@ -375,13 +409,14 @@ mountBackground(app);
 mountCam(app, PORT);
 mountTeam(app);
 mountFace(app, authResponse);
+mountDemo(app, authResponse);
 
 // ------------------------------------------------------------------ integrations
 app.get('/api/integrations', requireAuth, (req, res) => {
-  const rows = Object.fromEntries(db.prepare('SELECT provider, status, last_sync FROM integrations WHERE user_id = ?').all(req.user.id).map(r => [r.provider, r]));
+  const rows = Object.fromEntries(db.prepare('SELECT provider, status, last_sync, meta FROM integrations WHERE user_id = ?').all(req.user.id).map(r => [r.provider, r]));
   res.json({
     providers: [
-      { key: 'whoop', name: 'WHOOP', kind: 'Wearable', status: rows.whoop?.status ?? 'disconnected', lastSync: rows.whoop?.last_sync ?? null, available: whoopConfigured(), metrics: ['recovery', 'hrv', 'rhr', 'spo2', 'sleep', 'strain', 'weight'] },
+      { key: 'whoop', name: 'WHOOP', kind: 'Wearable', status: rows.whoop?.status ?? 'disconnected', lastSync: rows.whoop?.last_sync ?? null, detail: (() => { try { return JSON.parse(rows.whoop?.meta || '{}').last ?? null; } catch { return null; } })(), available: whoopConfigured(), metrics: ['recovery', 'hrv', 'rhr', 'spo2', 'sleep', 'strain', 'weight'] },
       { key: 'nasa-lab', name: 'NASA lab results', kind: 'Clinical feed', status: 'ready', available: false, note: 'Uses POST /api/ingest when NASA data access is granted', metrics: ['ntx', 'vitd'] },
       { key: 'dosimeter', name: 'Station dosimeter', kind: 'Environment', status: 'ready', available: false, note: 'Uses POST /api/ingest', metrics: ['radiation', 'co2'] },
       { key: 'astroskin', name: 'Bio-Monitor / Astroskin', kind: 'Smart garment', status: 'planned', available: false, metrics: ['rhr', 'spo2', 'bp', 'temp'] },
@@ -396,13 +431,14 @@ app.post('/api/integrations/whoop/start', requireAuth, (req, res) => {
 
 app.get('/api/integrations/whoop/callback', async (req, res) => {
   const st = consumeState(req.query.state);
-  const back = (platform, q) => res.redirect(`${platform === 'native' ? (process.env.NATIVE_REDIRECT || 'perigee://integrations') : `${APP_URL}/integrations`}?${new URLSearchParams(q)}`);
+  const base = (process.env.APP_URL || '').trim().replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`; // never send people to localhost when APP_URL was forgotten
+  const back = (platform, q) => res.redirect(`${platform === 'native' ? (process.env.NATIVE_REDIRECT || 'perigee://integrations') : `${base}/integrations`}?${new URLSearchParams(q)}`);
   if (!st) return back('web', { whoop: 'error', reason: 'state' });
   if (req.query.error || !req.query.code) return back(st.platform, { whoop: 'denied' });
   try {
     await exchangeCode(st.user_id, String(req.query.code));
-    await syncWhoop(st.user_id).catch(() => null);
-    back(st.platform, { whoop: 'connected' });
+    const r = await syncWhoop(st.user_id, 60).catch(e => ({ error: String(e.message).slice(0, 120) }));
+    back(st.platform, { whoop: 'connected', imported: String(r.imported ?? 0), ...(r.error ? { reason: r.error } : {}) });
   } catch (e) { console.error(e); back(st.platform, { whoop: 'error' }); }
 });
 

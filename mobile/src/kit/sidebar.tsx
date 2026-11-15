@@ -32,7 +32,7 @@ const TOOLS: { to: string; icon: any; label: string; tone?: string }[] = [
 export function Sidebar() {
   const path = usePathname();
   const { user } = useAuth();
-  const tools = user?.admin || user?.role === 'surgeon' ? [...TOOLS, { to: '/admin', icon: Stethoscope, label: 'Surgeon console' }] : TOOLS;
+  const tools = user?.leader ? [...TOOLS, { to: '/admin/leader', icon: Stethoscope, label: 'Team overview' }, { to: '/admin', icon: Stethoscope, label: 'Doctor console' }] : user?.admin || user?.role === 'surgeon' ? [...TOOLS, { to: '/admin', icon: Stethoscope, label: 'Surgeon console' }] : TOOLS;
   const cur = TABS.find(t => path.startsWith('/' + t.name))?.name ?? (path === '/' ? 'today' : null);
   return (
     <View style={{ width: 252, paddingTop: 30, paddingHorizontal: 18, paddingBottom: 22, borderRightWidth: 1, borderRightColor: K.hair, backgroundColor: 'rgba(255,250,246,0.6)' }}>

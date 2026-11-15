@@ -61,9 +61,25 @@ export function aiSummary(id) {
   if (!b || !b.sharedConsent) return '';
   const parts = [];
   if (b.characteristics) parts.push(`Character and preferences: ${b.characteristics.slice(0, 700)}`);
+  if (b.allergies) parts.push(`ALLERGIES (important, never suggest anything containing them): ${b.allergies}`);
+  if (b.medications) parts.push(`Current medications: ${b.medications}`);
   if (b.conditions?.length) parts.push(`Known health conditions (never diagnose, never raise them unless the crew member does): ${b.conditions.map(c => c.name).join(', ')}`);
   if (b.cvText) parts.push(`Background: ${b.cvText.slice(0, 500)}`);
   return parts.join('\n');
+}
+
+/** The files the astronaut uploaded to their background, handed to the SI only when they agreed to share it (text inline, PDF/photo natively). */
+export function aiFiles(id) {
+  const b = readBackground(id);
+  if (!b || !b.sharedConsent) return { text: [], files: [], names: [] };
+  const rows = db.prepare('SELECT name, mime, data FROM crew_files WHERE user_id = ? ORDER BY id DESC LIMIT 3').all(id);
+  const out = { text: [], files: [], names: rows.map(r => r.name) };
+  for (const r of rows) {
+    const buf = Buffer.from(r.data);
+    if (r.mime === 'text/plain') out.text.push({ name: r.name, text: buf.toString('utf8').slice(0, 8000) });
+    else if (/^(application\/pdf|image\/(png|jpeg))$/.test(r.mime)) out.files.push({ name: r.name, mime: r.mime, data: buf.toString('base64') });
+  }
+  return out;
 }
 
 export function mountBackground(app) {

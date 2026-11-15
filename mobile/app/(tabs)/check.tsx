@@ -89,12 +89,17 @@ function Stepper({ value, onChange, step = 5, unit }: { value: number; onChange:
   );
 }
 
-function ManualField({ r, value, onChange }: { r: Reading; value: string; onChange: (v: string) => void }) {
+function ManualField({ r, value, onChange, value2, onChange2 }: { r: Reading; value: string; onChange: (v: string) => void; value2?: string; onChange2?: (v: string) => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: K.hair }}>
       <View style={{ flex: 1 }}><Txt v="subM">{r.label}</Txt><SourceChip r={r} compact /></View>
       <TextInput value={value} onChangeText={t => onChange(t.replace(',', '.').replace(/[^0-9.]/g, '').slice(0, 5))} keyboardType="decimal-pad" placeholder={({ sleep: '6.5', rhr: '60', hrv: '45', dose: '0.40', spo2: '97', bp: 'sys' } as Record<string, string>)[r.key] ?? ''} placeholderTextColor={K.ink3} maxLength={5}
         accessibilityLabel={`${r.label} value`} style={{ width: 70, height: 40, borderRadius: 12, borderWidth: 1.2, borderColor: value ? K.copper : K.hair2, textAlign: 'center', fontFamily: F.sb, fontSize: 17, color: K.ink, backgroundColor: '#fff' }} />
+      {r.key === 'bp' && onChange2 ? (<>
+        <Txt v="subM" color={K.ink2}>/</Txt>
+        <TextInput value={value2 ?? ''} onChangeText={t => onChange2(t.replace(/[^0-9]/g, '').slice(0, 3))} keyboardType="number-pad" placeholder="dia" placeholderTextColor={K.ink3} maxLength={3}
+          accessibilityLabel="Diastolic pressure" style={{ width: 62, height: 40, borderRadius: 12, borderWidth: 1.2, borderColor: value2 ? K.copper : K.hair2, textAlign: 'center', fontFamily: F.sb, fontSize: 16, color: K.ink }} />
+      </>) : null}
       <Txt v="caption" color={K.ink2} style={{ width: 44 }}>{UNIT[r.key] ?? ''}</Txt>
     </View>
   );
@@ -133,7 +138,9 @@ export default function CheckTab() {
     const man: Record<string, number> = {};
     for (const [k, v] of Object.entries(manual)) if (v) man[k] = +v;
     const num = (k: string) => (manual[k] ? +manual[k] : undefined);
-    const entry: ManualEntry = { at: Date.now(), sleep: num('sleep'), rhr: num('rhr'), hrv: num('hrv'), exercise: ex, radiation: num('dose'), mood: Math.round(mood / 25) + 1, stress: wb.stress, symptoms: sym.map(k => LABEL[k] ?? k) };
+    const bpOk = !!manual.bp && !!manual.bp2;
+    if (!bpOk) { delete man.bp; delete man.bp2; } // a blood pressure needs both numbers
+    const entry: ManualEntry = { at: Date.now(), sleep: num('sleep'), rhr: num('rhr'), hrv: num('hrv'), spo2: num('spo2'), bp: bpOk ? num('bp') : undefined, bp2: bpOk ? num('bp2') : undefined, exercise: ex, radiation: num('dose'), mood: Math.round(mood / 25) + 1, stress: wb.stress, symptoms: sym.map(k => LABEL[k] ?? k) };
     setStore(s => ({
       ...s,
       checks: [...s.checks.filter(c => c.day !== today), { day: today, at: Date.now(), mood, moodPrivate: priv, symptoms: sym, exerciseMin: ex, manual: man }],
@@ -141,6 +148,9 @@ export default function CheckTab() {
       radiation: entry.radiation != null ? [...s.radiation.filter(r => r.id !== `daily-${today}`), { id: `daily-${today}`, at: Date.now(), fromDay: today, toDay: today, mSv: entry.radiation, device: 'Personal dosimeter', location: 'Crew quarters' }] : s.radiation,
     }));
     saveWellbeing(wb); // private: stays on this device
+    // hand-entered vitals also go to the server, so the SI and your flight surgeon see the same numbers
+    const sendM = (metric: string, value?: number, value2?: number) => { if (value != null && Number.isFinite(value)) api('/api/measurements', { body: { metric, value, ...(value2 != null ? { value2 } : {}) } }).catch(() => {}); };
+    sendM('sleep', entry.sleep); sendM('rhr', entry.rhr); sendM('hrv', entry.hrv); sendM('spo2', entry.spo2); sendM('bp', entry.bp, entry.bp2); sendM('radiation', entry.radiation);
     try { await api('/api/checkins', { body: { mood: priv ? undefined : mood, symptoms: sym, note: '' } }); } catch {} // offline is fine: the check is stored on the device
     haptic.success(); setBusy(false); setSaved(true);
   };
@@ -171,7 +181,7 @@ export default function CheckTab() {
       {manualKeys.length ? (
         <Card style={{ marginTop: 10, paddingVertical: 4 }}>
           <Kicker color={K.ink2} style={{ marginTop: 8, marginBottom: 2 }}>Missing · add by hand</Kicker>
-          {manualKeys.map(r => <ManualField key={r.key} r={r} value={manual[r.key] ?? ''} onChange={v => setManual(s => ({ ...s, [r.key]: v }))} />)}
+          {manualKeys.map(r => <ManualField key={r.key} r={r} value={manual[r.key] ?? ''} onChange={v => setManual(s => ({ ...s, [r.key]: v }))} value2={manual.bp2 ?? ''} onChange2={v => setManual(s => ({ ...s, bp2: v }))} />)}
         </Card>
       ) : null}
       {lowConf && lowConf.confidence < 85 ? (

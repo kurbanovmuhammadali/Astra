@@ -23,11 +23,11 @@ export default function CameraStation() {
   if (auto && Array.isArray(crew)) return <StationView crew={crew} onExit={() => setAuto(false)} />;
   if (pick) return <CaptureView key={pick.id} base={`/api/station/${pick.id}`} autoStart onExit={() => setPick(null)} />;
   if (Platform.OS !== 'web') return <View style={box}><Txt v="headline" color="#fff" center>Open /camera in a browser</Txt></View>;
-  if (crew === 'off') return <View style={box}><Txt v="title" color="#fff" center>Camera station is off</Txt><Txt v="sub" color="#E3B79E" center style={{ marginTop: 8 }}>Set CAMERA_STATION=on in server/.env and restart the server.</Txt></View>;
+  if (crew === 'off') return <View style={box}><Txt v="title" color="#fff" center>Sign in to use the camera station</Txt><Txt v="sub" color="#E3B79E" center style={{ marginTop: 8 }}>Open Celeste in this browser, sign in as a crew member or doctor, then open /camera again. You can film yourself and your crew mates; doctors can film anyone.</Txt></View>;
 
   return (
     <View style={box}>
-      <Txt v="mono" color="#E3B79E" upper>✦ HMSC · camera station</Txt>
+      <Txt v="mono" color="#E3B79E" upper>✦ Celeste · camera station</Txt>
       <Txt v="title" color="#fff" center style={{ marginTop: 8 }}>Who is on camera?</Txt>
       <Txt v="sub" color="#E3B79E" center style={{ marginTop: 6, maxWidth: 420 }}>Scan the room to recognise everyone, or pick one astronaut manually.</Txt>
       <View style={{ width: '100%', maxWidth: 520, marginTop: 20, gap: 10 }}>

@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, KeyboardAvoidingView, Platform, ScrollView, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Speech from 'expo-speech';
+import * as DocumentPicker from 'expo-document-picker';
+import { Rich } from '@/kit/rich';
+import { speak, stopSpeaking, langOf } from '@/data/voice';
+import type { Attachment } from '@/data/assistant';
 import { Keyboard, Paperclip, ArrowUp, X, FileText, FlaskConical, Image as ImageIcon, Volume2, VolumeX, Mic, ChevronLeft, History, Plus } from 'lucide-react-native';
 import { useAuth } from '@/auth';
 import { ELEV, K, native, web } from '@/kit/tokens';
@@ -32,7 +35,7 @@ function Bubble({ m, streaming }: { m: ChatMsg; streaming?: boolean }) {
         </View>
       ))}
       <View style={[{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderBottomRightRadius: me ? 6 : 20, borderBottomLeftRadius: me ? 20 : 6, backgroundColor: me ? K.copper : K.cardSolid, borderWidth: me ? 0 : 1, borderColor: K.hair }, !me && ELEV.card]}>
-        <Txt v="body" color={me ? '#fff' : K.ink}>{m.text}{streaming ? ' ▍' : ''}</Txt>
+        {me ? <Txt v="body" color="#fff">{m.text}</Txt> : <Rich text={m.text} streaming={streaming} />}
       </View>
     </Animated.View>
   );
@@ -85,11 +88,12 @@ export default function Assistant() {
   useEffect(() => { if (introPending) measureIntro(); }, [introPending]);
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [attachErr, setAttachErr] = useState<string | null>(null);
   const [heard, setHeard] = useState('');
   const [stream, setStream] = useState<ChatMsg | null>(null);
   const [attach, setAttach] = useState(false);
-  const [voiceOn, setVoiceOn] = useState(true);
+  const [voiceOn, setVoiceOn] = useState(false); // spoken replies are off until the person turns them on
   const [kb, setKb] = useState(false);
   const scroll = useRef<ScrollView>(null);
   const rec = useRef<any>(null);
@@ -97,7 +101,7 @@ export default function Assistant() {
   const input = useRef<TextInput>(null);
 
   useEffect(() => { if (params.chat) { setChatId(params.chat === 'new' ? null : params.chat); setState('ready'); setStream(null); } }, [params.chat, params.t]);
-  useEffect(() => () => { Speech.stop(); sim.current.forEach(clearTimeout); rec.current?.abort?.(); }, []);
+  useEffect(() => () => { stopSpeaking(); sim.current.forEach(clearTimeout); rec.current?.abort?.(); }, []);
   const chat = chats.find(c => c.id === chatId) ?? null;
   const msgs = chat?.messages ?? [];
   const convo = msgs.length > 0 || !!stream;
@@ -119,16 +123,17 @@ export default function Assistant() {
     haptic.soft();
     const id = chatId ?? uid();
     if (!chatId) setChatId(id);
-    const m: ChatMsg = { id: uid(), role: 'user', text: q || 'Please review this file.', at: Date.now(), files: files.length ? files : undefined };
-    push(id, m, titleFor(q || files[0]));
+    const m: ChatMsg = { id: uid(), role: 'user', text: q || 'Please review this file.', at: Date.now(), files: files.length ? files.map(f => f.name) : undefined };
+    push(id, m, titleFor(q || files[0].name));
+    const sent = files;
     setDraft(''); setFiles([]); setHeard('');
     setState('thinking'); setTyping(true);
     const history = [...(getStore().chats.find(c => c.id === id)?.messages ?? [])];
-    const reply = await ask(history, ctx());
+    const reply = await ask(history, ctx(), sent);
     setTyping(false);
     // stream the reply word by word while the orb "speaks"
     setState('speaking');
-    if (voiceOn && viaVoice) Speech.speak(reply, { rate: 1.0, pitch: 1.0, onDone: () => setState('ready'), onStopped: () => setState('ready') });
+    const talking = voiceOn && viaVoice ? speak(reply).then(() => setState('ready')) : null; // starts the natural voice while the text streams in
     const words = reply.split(' ');
     const sm: ChatMsg = { id: uid(), role: 'astra', text: '', at: Date.now() };
     for (let i = 1; i <= words.length; i++) {
@@ -149,14 +154,14 @@ export default function Assistant() {
   };
   const listen = () => {
     if (state === 'listening') return stopListening(true);
-    Speech.stop();
+    stopSpeaking();
     haptic.firm();
     setState('listening'); setHeard('');
     const SR = web && typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null;
     if (SR) {
       try {
         const r = new SR(); rec.current = r;
-        r.lang = 'en-US'; r.interimResults = true; r.continuous = false;
+        r.lang = langOf(''); r.interimResults = true; r.continuous = false;
         let final = '';
         r.onresult = (e: any) => { let t = ''; for (const res of e.results) t += res[0].transcript; final = t; setHeard(t); };
         r.onerror = () => { rec.current = null; simulate(); };
@@ -175,7 +180,22 @@ export default function Assistant() {
     sim.current.push(setTimeout(() => { sim.current = []; send(q, true); }, 900 + words.length * 260 + 500));
   };
 
-  const newChat = () => { Speech.stop(); stopListening(false); setChatId(null); setStream(null); setKb(false); setState('ready'); };
+  const pickFile = async () => {
+    setAttachErr(null);
+    try {
+      const r = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*', 'text/*', 'application/json'], copyToCacheDirectory: true, multiple: false });
+      if (r.canceled || !r.assets?.[0]) return;
+      const a = r.assets[0];
+      if ((a.size ?? 0) > 4 * 1024 * 1024) { setAttachErr('That file is larger than 4 MB.'); return; }
+      const blob = await (await fetch(a.uri)).blob();
+      const mime = (a.mimeType || blob.type || '').toLowerCase();
+      const att: Attachment = { name: a.name, mime };
+      if (/^(text\/|application\/json)/.test(mime)) att.text = await blob.text();
+      else att.data = await new Promise<string>((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1] ?? ''); fr.onerror = () => no(new Error('read')); fr.readAsDataURL(blob); });
+      setFiles(x => [...x.filter(y => y.name !== att.name), att].slice(-3)); setAttach(false); setKb(true);
+    } catch { setAttachErr('Could not read that file.'); }
+  };
+  const newChat = () => { stopSpeaking(); stopListening(false); setChatId(null); setStream(null); setKb(false); setState('ready'); };
   const orbSize = convo ? 96 : sidebar ? 260 : 210;
   const first = user?.name.split(' ')[0] ?? 'crew';
 
@@ -184,9 +204,9 @@ export default function Assistant() {
       {files.length ? (
         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
           {files.map(f => (
-            <Pressy key={f} label={`Remove ${f}`} onPress={() => setFiles(x => x.filter(y => y !== f))}>
+            <Pressy key={f.name} label={`Remove ${f.name}`} onPress={() => setFiles(x => x.filter(y => y !== f))}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: K.cardSolid, borderRadius: 12, paddingHorizontal: 10, height: 32, borderWidth: 1, borderColor: K.hair2 }}>
-                <FileText size={14} color={K.copper} /><Txt v="caption">{f}</Txt><X size={13} color={K.ink3} />
+                <FileText size={14} color={K.copper} /><Txt v="caption" numberOfLines={1} style={{ maxWidth: 160 }}>{f.name}</Txt><X size={13} color={K.ink3} />
               </View>
             </Pressy>
           ))}
@@ -242,7 +262,7 @@ export default function Assistant() {
             <Pressy label="Chat history" onPress={() => router.push('/assistant/history')} hitSlop={6}>
               <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: K.cardSolid, borderWidth: 1, borderColor: K.hair2 }}><History size={16} color={K.ink} /></View>
             </Pressy>
-            <Pressy label={voiceOn ? 'Mute spoken replies' : 'Speak replies'} onPress={() => { setVoiceOn(v => !v); Speech.stop(); }} hitSlop={6}>
+            <Pressy label={voiceOn ? 'Mute spoken replies' : 'Speak replies'} onPress={() => { setVoiceOn(v => !v); stopSpeaking(); }} hitSlop={6}>
               <View style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: K.cardSolid, borderWidth: 1, borderColor: K.hair2 }}>{voiceOn ? <Volume2 size={16} color={K.ink} /> : <VolumeX size={16} color={K.ink3} />}</View>
             </Pressy>
           </View>
@@ -280,11 +300,10 @@ export default function Assistant() {
 
         <Sheet open={attach} onClose={() => setAttach(false)} kicker="Attach" title="Add a file for Celeste">
           <ListGroup>
-            {[{ icon: FileText, t: 'Dosimeter report', s: 'PDF · personal dosimeter', f: 'dosimeter-report.pdf' }, { icon: FlaskConical, t: 'Lab results', s: 'Blood and urine markers', f: 'lab-results.pdf' }, { icon: ImageIcon, t: 'Photo', s: 'Skin, eye or injury photo', f: 'photo.jpg' }].map(o => (
-              <ListRow key={o.f} icon={o.icon} title={o.t} sub={o.s} onPress={() => { setFiles(x => (x.includes(o.f) ? x : [...x, o.f])); setAttach(false); setKb(true); }} />
-            ))}
+            <ListRow icon={FileText} title="Choose a file" sub="PDF, photo, or a text / CSV file · 4 MB max" onPress={pickFile} />
           </ListGroup>
-          <Txt v="caption" color={K.ink3} center style={{ marginTop: 10 }}>Demo · files are not uploaded or parsed yet.</Txt>
+          {attachErr ? <Txt v="caption" color={K.flag} center style={{ marginTop: 10 }}>{attachErr}</Txt> : null}
+          <Txt v="caption" color={K.ink3} center style={{ marginTop: 10 }}>The SI reads the file to answer this question. It is sent to the AI provider once and is not stored.</Txt>
         </Sheet>
         {introBox && rootSize ? <AiIntro box={introBox} W={rootSize.w} H={rootSize.h} name={first} onDone={() => { setFlag('aiIntroSeen'); setIntroPending(false); setIntroBox(null); }} /> : null}
       </KeyboardAvoidingView>

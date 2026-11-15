@@ -18,18 +18,18 @@ export const mailMode = () =>
   : null;
 export const mailConfigured = () => mailMode() !== null;
 
-const from = () => env('MAIL_FROM') || env('SMTP_USER') || 'HMSC <onboarding@resend.dev>';
+const from = () => env('MAIL_FROM') || env('SMTP_USER') || 'Celeste <onboarding@resend.dev>';
 
 export function codeEmail(code, purpose) {
   const what = purpose === 'login' ? 'log in to' : 'finish creating your account in';
-  const subject = `${code} is your HMSC code`;
-  const text = `Your HMSC verification code is ${code}.\n\nEnter it in the app to ${what} HMSC (Health Monitoring System Cometa). It expires in 10 minutes.\n\nIf you did not ask for this, you can ignore this email.`;
+  const subject = `${code} is your Celeste code`;
+  const text = `Your Celeste verification code is ${code}.\n\nEnter it in the app to ${what} Celeste. It expires in 10 minutes.\n\nIf you did not ask for this, you can ignore this email.`;
   const html = `<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:420px;margin:auto;padding:24px;color:#2B1E18">
-<div style="font-weight:700;letter-spacing:2px;color:#B8693F">&#10022; HMSC</div>
+<div style="font-weight:700;letter-spacing:2px;color:#B8693F">&#10022; Celeste</div>
 <p style="margin:18px 0 6px">Your verification code</p>
 <div style="font-size:38px;font-weight:700;letter-spacing:10px;background:#F6E4D9;border-radius:14px;padding:14px 18px;text-align:center">${code}</div>
-<p style="color:#6E5A50;font-size:14px;margin-top:16px">Enter it in the app to ${what} HMSC. It expires in 10 minutes. If you did not ask for this, ignore this email.</p>
-<p style="color:#A8958B;font-size:12px">Health Monitoring System Cometa · not a medical device</p></div>`;
+<p style="color:#6E5A50;font-size:14px;margin-top:16px">Enter it in the app to ${what} Celeste. It expires in 10 minutes. If you did not ask for this, ignore this email.</p>
+<p style="color:#A8958B;font-size:12px">Celeste crew health · not a medical device</p></div>`;
   return { subject, text, html };
 }
 

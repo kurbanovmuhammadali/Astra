@@ -1,4 +1,5 @@
 process.env.DB_FILE = ':memory:';
+process.env.DEMO_ACCOUNTS = 'off'; // real-data tests: no demo people
 process.env.EMAIL_VERIFICATION = 'auto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -60,3 +61,17 @@ test('file upload: validated, listed, downloadable by the surgeon only', async (
   assert.equal((await crew('GET', `/api/admin/crew/${me.id}/files/${fid}`, null, true)).status, 403);
 });
 test.after(() => srv.close());
+
+test('doctor sign-in: only allow-listed emails; first time creates the surgeon account', async () => {
+  process.env.ADMIN_EMAILS = 'doc@t.test';
+  const doc = jar();
+  assert.equal((await doc('POST', '/api/auth/code', { email: 'rando@t.test', purpose: 'doctor' })).status, 403);
+  let r = await doc('POST', '/api/auth/code', { email: 'doc@t.test', purpose: 'doctor' });
+  assert.equal(r.status, 200);
+  const bad = await doc('POST', '/api/auth/code/verify', { email: 'doc@t.test', purpose: 'doctor', code: r.body.devCode, profile: { acceptTerms: true } });
+  assert.equal(bad.status, 400); // new doctor must give a name
+  r = await doc('POST', '/api/auth/code/verify', { email: 'doc@t.test', purpose: 'doctor', code: r.body.devCode, profile: { name: 'Dr. Test', acceptTerms: true } });
+  assert.equal(r.status, 200); assert.equal(r.body.user.role, 'surgeon'); assert.equal(r.body.user.admin, true);
+  assert.equal((await doc('GET', '/api/admin/crew')).status, 200);
+  delete process.env.ADMIN_EMAILS;
+});

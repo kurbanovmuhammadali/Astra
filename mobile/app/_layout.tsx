@@ -17,7 +17,7 @@ import { loadStore } from '@/data/store';
 import { LiveProvider } from '@/live/Live';
 
 /** Pushed screens inside the crew app slide in natively on iOS; on web each page animates itself (src/kit/page.tsx). */
-const PUSHED = ['signals', 'assistant/history', 'assistant/menu', 'training/sets', 'training/[id]', 'training/setup', 'profile/edit', 'profile/privacy', 'profile/connected', 'profile/account', 'profile/presentation', 'profile/face', 'integrations', 'report', 'metric/[key]', 'legal/[doc]', 'radiation', 'eva', 'eva-check', 'radiation-log', 'research-data', 'formcheck', 'research', 'profile/briefing', 'crew', 'family', 'wellbeing', 'shelter', 'daily', 'background', 'nutrition', 'mission-plan', 'attention', 'judge', 'admin/reports', 'admin/index', 'admin/[id]'];
+const PUSHED = ['signals', 'assistant/history', 'assistant/menu', 'training/sets', 'training/[id]', 'training/setup', 'profile/edit', 'profile/privacy', 'profile/connected', 'profile/account', 'profile/presentation', 'profile/face', 'integrations', 'report', 'metric/[key]', 'legal/[doc]', 'radiation', 'eva', 'eva-check', 'radiation-log', 'research-data', 'formcheck', 'research', 'profile/briefing', 'crew', 'family', 'wellbeing', 'shelter', 'daily', 'background', 'nutrition', 'mission-plan', 'attention', 'judge', 'admin/reports', 'admin/index', 'admin/[id]', 'admin/leader'];
 
 /** Reload skeleton until sign-in state is known (min ~0.7 s so it reads as a deliberate loading state).
  *  Its shape matches the page being opened (Home, Mission, AI, Body, Profile, lists, sign-up…). */
@@ -42,7 +42,7 @@ export default function Root() {
         <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'fade_from_bottom' }}>
           {/* onboarding screens animate themselves (src/motion.tsx), so the native stack transition is off */}
-          {['intro', 'welcome', '(auth)/name', '(auth)/age', '(auth)/mission', '(auth)/goal', '(auth)/data', '(auth)/email', '(auth)/code', '(auth)/face', '(auth)/team', '(auth)/login', '(auth)/done', 'cam/[token]', 'camera', 'f/[token]'].map(n => (
+          {['intro', 'welcome', '(auth)/name', '(auth)/age', '(auth)/mission', '(auth)/goal', '(auth)/data', '(auth)/email', '(auth)/code', '(auth)/face', '(auth)/team', '(auth)/login', '(auth)/doctor', '(auth)/done', 'cam/[token]', 'camera', 'f/[token]'].map(n => (
             <Stack.Screen key={n} name={n} options={{ animation: 'none', contentStyle: { backgroundColor: '#F8EEE8' } }} />
           ))}
           <Stack.Screen name="(tabs)" options={{ animation: 'fade', contentStyle: { backgroundColor: K.canvas } }} />

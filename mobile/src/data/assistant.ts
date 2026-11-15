@@ -38,13 +38,15 @@ function demoReply(q: string, c: AssistantContext, files?: string[]): string {
   return `I can help with your sleep, recovery, heart signals, radiation dose and training plan. In this demo my answers come from your Celeste data; full conversation arrives when the assistant is connected.`;
 }
 
-export async function ask(history: ChatMsg[], ctx: AssistantContext): Promise<string> {
+export type Attachment = { name: string; mime: string; text?: string; data?: string };
+
+export async function ask(history: ChatMsg[], ctx: AssistantContext, attachments: Attachment[] = []): Promise<string> {
   const last = history[history.length - 1];
   if (last && CRISIS.test(last.text)) return CARE_MESSAGE; // never leave a distress message to a template
   let note = '';
   if (ASSISTANT_PROVIDER === 'server') {
     try {
-      const r = await api<{ reply: string; refused?: boolean }>('/api/assistant', { body: { messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })), context: ctx } });
+      const r = await api<{ reply: string; refused?: boolean }>('/api/assistant', { body: { messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })), context: ctx, ...(attachments.length ? { attachments } : {}) } });
       if (r.reply && !r.refused) return r.reply;
       note = 'the SI declined this message';
     } catch (e: any) {

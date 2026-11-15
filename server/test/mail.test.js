@@ -1,4 +1,5 @@
 process.env.DB_FILE = ':memory:';
+process.env.DEMO_ACCOUNTS = 'off'; // real-data tests: no demo people
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const { app } = await import('../src/index.js');
@@ -28,6 +29,6 @@ test('mail provider configured → "sent", the code is never returned', async ()
 test('email template carries the code and a branded subject', async () => {
   const { codeEmail } = await import('../src/mail.js');
   const m = codeEmail('4821', 'signup');
-  assert.match(m.subject, /4821/); assert.match(m.text, /4821/); assert.match(m.html, /HMSC/);
+  assert.match(m.subject, /4821/); assert.match(m.text, /4821/); assert.match(m.html, /Celeste/);
 });
 test.after(() => srv.close());

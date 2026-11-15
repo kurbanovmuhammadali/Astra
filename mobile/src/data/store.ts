@@ -81,7 +81,7 @@ export function asBriefing(b: MissionBrief | undefined, profile: AppState['profi
     eva: b.eva ?? (b.evaDates.length >= 5 ? 'daily' : b.evaDates.length ? 'weekly' : 'none'), crew: b.crewSize, sensors: b.sensors ?? ['WHOOP'], at: b.at ?? 0,
   };
 }
-export type ManualEntry = { at: number; sleep?: number; rhr?: number; hrv?: number; stress?: number; mood?: number; exercise?: number; symptoms?: string[]; radiation?: number };
+export type ManualEntry = { at: number; sleep?: number; rhr?: number; hrv?: number; stress?: number; mood?: number; exercise?: number; symptoms?: string[]; radiation?: number; spo2?: number; bp?: number; bp2?: number };
 export type RadEntry = { id: string; at: number; fromDay: string; toDay: string; mSv: number; device: string; location: string };
 export type HandoffLine = { h: string; t: string };
 export type Handoff = {

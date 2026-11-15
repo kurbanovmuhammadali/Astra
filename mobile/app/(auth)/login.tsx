@@ -15,7 +15,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Crew log in: accounts are prepared by the mission, so it's just email → 4-digit code. */
 export default function Login() {
   const [d, set] = useDraft();
-  const { requestCode, faceLogin } = useAuth();
+  const { requestCode, faceLogin, demoLogin } = useAuth();
+  const [demoOn, setDemoOn] = useState(false);
+  React.useEffect(() => { api<{ demoAccounts?: boolean }>('/api/health').then(h => setDemoOn(!!h.demoAccounts)).catch(() => {}); }, []);
+  const tryDemo = async (as: 'astronaut' | 'doctor' | 'leader') => { setBusy(true); setErr(null); try { await demoLogin(as); nav.replace(as === 'astronaut' ? '/today' : as === 'leader' ? '/admin/leader' : '/admin'); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   const [faceOk, setFaceOk] = useState(false), [scan, setScan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -48,6 +51,17 @@ export default function Login() {
         <Press onPress={() => setScan(true)} label="Sign in with my face" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 16, padding: 14, borderRadius: 18, backgroundColor: A.copper }}>
           <T size={15} weight="m" color="#fff">Sign in with my face</T>
         </Press>
+      ) : null}
+      {demoOn ? (
+        <View style={{ marginTop: 18, padding: 14, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.75)', borderWidth: 1, borderColor: A.line }}>
+          <T size={13.5} weight="m" color={A.ink}>Judges: try a demo account</T>
+          <T size={12.5} color={A.ink2} style={{ marginTop: 3, lineHeight: 18 }}>These are demo accounts with ready-made data, a health file and reports. One tap signs you in.</T>
+          <View style={{ gap: 8, marginTop: 10 }}>
+            <Press onPress={() => tryDemo('astronaut')} label="Demo astronaut" style={{ padding: 12, borderRadius: 14, backgroundColor: A.copper }}><T size={14} weight="m" color="#fff">Demo astronaut · Alex Morgan</T></Press>
+            <Press onPress={() => tryDemo('doctor')} label="Demo doctor" style={{ padding: 12, borderRadius: 14, backgroundColor: A.ink }}><T size={14} weight="m" color="#fff">Demo doctor · Dr. Elena Voss</T></Press>
+            <Press onPress={() => tryDemo('leader')} label="Demo team leader" style={{ padding: 12, borderRadius: 14, backgroundColor: A.sand2, borderWidth: 1, borderColor: A.line }}><T size={14} weight="m" color={A.ink}>Demo team leader · Cmdr. Volkova</T></Press>
+          </View>
+        </View>
       ) : null}
       <T size={13} color={A.ink3} style={{ marginTop: 14, marginLeft: 4 }}>New here? <T size={13} weight="m" color={A.copper} onPress={() => nav.replace('/name')}>Get started</T></T>
     </FormShell>

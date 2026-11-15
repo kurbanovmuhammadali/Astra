@@ -12,7 +12,7 @@ const API = 'https://api.prod.whoop.com/developer/v2';
 export const SCOPES = ['offline', 'read:recovery', 'read:cycles', 'read:sleep', 'read:workout', 'read:body_measurement'];
 
 export const whoopConfigured = () => Boolean(process.env.WHOOP_CLIENT_ID && process.env.WHOOP_CLIENT_SECRET);
-const redirectUri = () => process.env.WHOOP_REDIRECT_URI || `http://localhost:${process.env.PORT || 4000}/api/integrations/whoop/callback`;
+const redirectUri = () => process.env.WHOOP_REDIRECT_URI?.trim() || (process.env.APP_URL?.trim() ? `${process.env.APP_URL.trim().replace(/\/$/, '')}/api/integrations/whoop/callback` : `http://localhost:${process.env.PORT || 4000}/api/integrations/whoop/callback`);
 
 export function authorizeUrl(userId, platform) {
   const state = token(24);
@@ -96,13 +96,17 @@ export async function syncWhoop(userId, days = 30) {
     ON CONFLICT(user_id, metric, source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET value = excluded.value, recorded_at = excluded.recorded_at`);
   const at = s => toSql(parseTs(s));
   let count = 0;
+  const stat = { recoveries: 0, recoveriesScored: 0, calibrating: 0, sleeps: 0, sleepsScored: 0, cycles: 0 };
   const put = (metric, v, unit, ext, when) => { if (v != null) { up.run(userId, metric, v, null, unit, ext, at(when)); count++; } };
 
   const [recoveries, sleeps, cycles] = await Promise.all([
     getAll(userId, '/recovery', start), getAll(userId, '/activity/sleep', start), getAll(userId, '/cycle', start),
   ]);
+  stat.recoveries = recoveries.length; stat.sleeps = sleeps.length; stat.cycles = cycles.length;
   for (const r of recoveries) {
+    if (r.score?.user_calibrating) stat.calibrating++;
     if (r.score_state !== 'SCORED' || !r.score || r.score.user_calibrating) continue;
+    stat.recoveriesScored++;
     const when = r.created_at ?? r.updated_at; const id = String(r.sleep_id ?? r.cycle_id);
     put('recovery', num(r.score.recovery_score), '%', id, when);
     put('hrv', num(r.score.hrv_rmssd_milli), 'ms', id, when);
@@ -111,6 +115,7 @@ export async function syncWhoop(userId, days = 30) {
   }
   for (const s of sleeps) {
     if (s.score_state !== 'SCORED' || s.nap || !s.score?.stage_summary) continue;
+    stat.sleepsScored++;
     const st = s.score.stage_summary;
     const ms = (st.total_light_sleep_time_milli ?? 0) + (st.total_slow_wave_sleep_time_milli ?? 0) + (st.total_rem_sleep_time_milli ?? 0);
     put('sleep', +(ms / 36e5).toFixed(2), 'h', String(s.id), s.end ?? s.updated_at);
@@ -123,8 +128,9 @@ export async function syncWhoop(userId, days = 30) {
     const bodyRes = await fetch(`${API}/user/measurement/body`, { headers: { Authorization: `Bearer ${await accessToken(userId)}` }, signal: AbortSignal.timeout(15000) });
     if (bodyRes.ok) { const b = await bodyRes.json(); put('weight', num(b.weight_kilogram), 'kg', `body-${new Date().toISOString().slice(0, 10)}`, new Date().toISOString()); }
   } catch { /* optional */ }
-  db.prepare(`UPDATE integrations SET last_sync = datetime('now'), status = 'connected' WHERE user_id = ? AND provider = 'whoop'`).run(userId);
-  return { imported: count };
+  const result = { imported: count, ...stat, at: new Date().toISOString() };
+  db.prepare(`UPDATE integrations SET last_sync = datetime('now'), status = 'connected', meta = ? WHERE user_id = ? AND provider = 'whoop'`).run(JSON.stringify({ last: result }), userId);
+  return result;
 }
 
 export async function disconnectWhoop(userId) {

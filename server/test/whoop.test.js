@@ -1,4 +1,5 @@
 process.env.DB_FILE = ':memory:';
+process.env.DEMO_ACCOUNTS = 'off'; // real-data tests: no demo people
 process.env.WHOOP_CLIENT_ID = 'cid'; process.env.WHOOP_CLIENT_SECRET = 'secret'; process.env.WHOOP_REDIRECT_URI = 'https://example.test/api/integrations/whoop/callback';
 process.env.TOKEN_ENC_KEY = 'x'.repeat(40);
 import test from 'node:test';

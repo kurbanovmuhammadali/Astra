@@ -111,7 +111,7 @@ export function buildMission(st0: AppState, crew: ReturnType<typeof useCrew>, us
     rhr: make('rhr', 'Resting HR', 'bpm', 'whoop', 6, 30, v => `${Math.round(v)} bpm`, (v, b) => band(v, b, false, true)),
     recovery: make('recovery', 'Recovery', '%', 'whoop', 6, 30, v => `${Math.round(v)}%`, v => (v < 34 ? 'watch' : 'ok'), { base: false }),
     spo2: make('spo2', 'SpO₂', '%', 'manual', 8, 30, v => `${Math.round(v)}%`, v => (v < 92 ? 'flag' : v < 95 ? 'watch' : 'ok'), { base: false }),
-    bp: make('bp', 'Blood pressure', 'mmHg', 'manual', 8, 72, v => `${Math.round(v)}/${Math.round(v * 0.66)}`, v => (v >= 140 ? 'flag' : v >= 130 ? 'watch' : 'ok'), { base: false }),
+    bp: make('bp', 'Blood pressure', 'mmHg', 'manual', 8, 72, v => `${Math.round(v)}`, v => (v >= 140 ? 'flag' : v >= 130 ? 'watch' : 'ok'), { base: false }),
     mood: make('mood', 'Mood', '/100', 'checkin', 8, 30, v => `${Math.round(v)}`, v => (v < 55 ? 'watch' : 'ok'), { base: false }),
     dose: make('dose', 'Radiation dose', 'mSv', 'dosimeter', 4, 30, v => `${v.toFixed(2)} mSv`, (v, b) => band(v, b, false, true)),
     co2: make('co2', 'Cabin CO₂', 'mmHg', 'cabin', new Date(now).getHours(), 2, v => `${v.toFixed(1)} mmHg`, v => (v > 4 ? 'flag' : v > 3.3 ? 'watch' : 'ok'), { base: false }),
@@ -122,7 +122,7 @@ export function buildMission(st0: AppState, crew: ReturnType<typeof useCrew>, us
   // the daily check can supply manual values (SpO₂, BP) and mood
   const todayCheck = st.checks.filter(c => c.day === todayKey).slice(-1)[0];
   if (todayCheck) {
-    for (const [k, v] of Object.entries(todayCheck.manual)) if (readings[k]) Object.assign(readings[k], { value: v, text: k === 'bp' ? `${v}/${Math.round(v * 0.66)}` : `${v}${readings[k].unit === '%' ? '%' : ''}`, at: todayCheck.at, fresh: 'received', confidence: 88, tone: k === 'spo2' ? (v < 92 ? 'flag' : v < 95 ? 'watch' : 'ok') : v >= 140 ? 'flag' : v >= 130 ? 'watch' : 'ok' });
+    for (const [k, v] of Object.entries(todayCheck.manual)) if (k !== 'bp2' && readings[k]) Object.assign(readings[k], { value: v, text: k === 'bp' ? `${v}/${todayCheck.manual.bp2 ?? '—'}` : `${v}${readings[k].unit === '%' ? '%' : ''}`, at: todayCheck.at, fresh: 'received', confidence: 88, tone: k === 'spo2' ? (v < 92 ? 'flag' : v < 95 ? 'watch' : 'ok') : v >= 140 ? 'flag' : v >= 130 ? 'watch' : 'ok' });
     Object.assign(readings.mood, { value: todayCheck.mood, text: String(todayCheck.mood), at: todayCheck.at, fresh: 'received', tone: todayCheck.mood < 55 ? 'watch' : 'ok', note: todayCheck.moodPrivate ? 'Private · stays on this device' : undefined });
   }
   const symptoms: string[] = demo ? ['vision', 'knee'] : [];
