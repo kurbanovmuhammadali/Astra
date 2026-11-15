@@ -2,7 +2,6 @@
  * Local "activity AI" for the camera station. Free, offline, nothing leaves the device:
  *   pose model (MediaPipe)  -> posture and movement per moment (standing, sitting, lying, walking)
  *   exercise counter        -> push-ups, pull-ups, squats and reps
- *   eating detector         -> a meal and its bites
  *   object detector         -> cup, bottle, laptop, phone ... for context
  * These are turned into a timeline and a plain-language report for the flight surgeon. It describes what the camera saw; it does not
  * judge health.
@@ -10,15 +9,14 @@
 import type { Lm } from './pose';
 import { postureOf } from './incident';
 
-export type ActState = 'absent' | 'standing' | 'sitting' | 'lying' | 'walking' | 'exercising' | 'eating';
+export type ActState = 'absent' | 'standing' | 'sitting' | 'lying' | 'walking' | 'exercising';
 export type Segment = { state: ActState; label: string; from: number; to: number; detail: string };
 const vis = (p?: Lm) => p?.visibility ?? 1;
 
 /** Posture of one frame; `hipVx` is horizontal hip speed in torso lengths per second. */
-export function classify(lm: Lm[] | null, ctx: { exercise?: string | null; eating?: boolean; hipVx?: number; aspect?: number } = {}): ActState {
+export function classify(lm: Lm[] | null, ctx: { exercise?: string | null; hipVx?: number; aspect?: number } = {}): ActState {
   if (!lm) return 'absent';
   if (ctx.exercise) return 'exercising';
-  if (ctx.eating) return 'eating';
   const p = postureOf(lm, ctx.aspect);
   if (!p) return 'absent';
   if (p.posture === 'lying') return 'lying';
@@ -29,7 +27,7 @@ export function classify(lm: Lm[] | null, ctx: { exercise?: string | null; eatin
   return (kneeY - hipY) / Math.max(p.torso, 0.05) < 0.4 ? 'sitting' : 'standing';
 }
 
-const WORD: Record<ActState, string> = { absent: 'out of view', standing: 'standing', sitting: 'seated', lying: 'lying down', walking: 'walking around', exercising: 'exercising', eating: 'eating' };
+const WORD: Record<ActState, string> = { absent: 'out of view', standing: 'standing', sitting: 'seated', lying: 'lying down', walking: 'walking around', exercising: 'exercising' };
 export type Timeline = { cur: ActState | null; since: number; segs: Segment[]; recent: { t: number; s: ActState }[] };
 export const createTimeline = (): Timeline => ({ cur: null, since: 0, segs: [], recent: [] });
 
@@ -58,7 +56,7 @@ export function segments(tl: Timeline, now: number, details: Partial<Record<ActS
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const span = (ms: number) => { const s = Math.round(ms / 1000); return s < 90 ? `${s} s` : `${Math.round(s / 60)} min`; };
 
-export type ReportInput = { name: string; from: number; to: number; segs: Segment[]; reps: Record<string, number>; bites: number; objects: Record<string, number>; incidents: string[] };
+export type ReportInput = { name: string; from: number; to: number; segs: Segment[]; reps: Record<string, number>; objects: Record<string, number>; incidents: string[] };
 /** Plain-language report. Deterministic template (no cloud AI): the same input always gives the same words. */
 export function buildReport(r: ReportInput): { summary: string; segments: Segment[] } {
   const first = r.name.split(' ')[0] || 'The crew member';
@@ -71,8 +69,6 @@ export function buildReport(r: ReportInput): { summary: string; segments: Segmen
   if (absent > total * 0.3) lines.push(`${first} was out of view for ${span(absent)}.`);
   const ex = Object.entries(r.reps).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}${n === 1 ? '' : 's'}`);
   if (ex.length) lines.push(`Exercise counted: ${ex.join(', ')}.`);
-  if (r.bites > 0) lines.push(`Eating seen: about ${r.bites} bites.`);
-  else if (by.has('eating')) lines.push('Eating seen.');
   const objs = Object.entries(r.objects).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k]) => k);
   if (objs.length) lines.push(`Objects seen nearby: ${objs.join(', ')}.`);
   lines.push(r.incidents.length ? `Alerts raised: ${r.incidents.join('; ')}.` : 'No collapse, shaking or long stillness was detected.');

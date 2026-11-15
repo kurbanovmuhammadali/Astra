@@ -32,16 +32,7 @@ CREATE TABLE IF NOT EXISTS activity_reports (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, from_ms INTEGER NOT NULL, to_ms INTEGER NOT NULL,
   summary TEXT NOT NULL, segments TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE TABLE IF NOT EXISTS meal_events (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  day TEXT NOT NULL,
-  slot TEXT NOT NULL,
-  bites INTEGER NOT NULL,
-  started_at INTEGER NOT NULL,
-  ended_at INTEGER NOT NULL,
-  UNIQUE (user_id, day, slot)
-);`);
+DROP TABLE IF EXISTS meal_events; -- the camera no longer tracks eating: old rows are removed`);
 
 const LIVE_MS = 8000, VIEW_MS = 6000, MAX_FRAME = 200 * 1024;
 /** userId -> { buf, at, viewedAt } (memory only) */
@@ -63,11 +54,6 @@ const owner = t => (TOKEN.test(String(t)) ? db.prepare('SELECT u.id, u.name FROM
 const fresh = uid => { const f = frames.get(uid); return f && Date.now() - f.at < LIVE_MS ? f : null; };
 const viewing = uid => { const f = frames.get(uid); return !!f && !!f.viewedAt && Date.now() - f.viewedAt < VIEW_MS; };
 const status = uid => { const r = rtcState(uid); return { hasLink: !!tokenOf(uid), live: !!fresh(uid) || r.live, viewing: (!!fresh(uid) && viewing(uid)) || r.viewers > 0, rtc: r.live, lastFrameAt: frames.get(uid)?.at ?? null }; };
-/** Meal slot from minutes since local midnight (same rule as the app). */
-export const slotFromMinutes = m => (m < 630 ? 'breakfast' : m < 930 ? 'lunch' : m < 1260 ? 'dinner' : 'snack');
-/** Camera-detected meals (precooked food: the camera only checks whether the astronaut ate). */
-export const mealEventsFor = (uid, days = 3) => db.prepare('SELECT day, slot, bites, started_at AS startedAt, ended_at AS endedAt FROM meal_events WHERE user_id = ? AND day >= ? ORDER BY started_at DESC')
-  .all(uid, new Date(Date.now() - days * 864e5).toISOString().slice(0, 10));
 const lan = () => Object.values(networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address);
 
 db.exec(`CREATE TABLE IF NOT EXISTS cam_clips (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, seconds INTEGER NOT NULL, mime TEXT NOT NULL, data BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
@@ -149,22 +135,6 @@ export function mountCam(app, port) {
       db.prepare('INSERT INTO activity_reports (user_id, from_ms, to_ms, summary, segments) VALUES (?,?,?,?,?)').run(o.id, Math.round(Number(req.body?.from) || Date.now()), Math.round(Number(req.body?.to) || Date.now()), summary, JSON.stringify(segs));
       res.json({ ok: true });
     });
-    app.post(prefix + '/meal', (req, res) => {
-      const o = who(req);
-      if (!o) return bad(res, notFound, 404);
-      if (!rateLimit(`camm:${keyOf(req)}`, 40, 3600e3)) return bad(res, 'Too many meal reports.', 429);
-      const { kind, bites, start, end, localMinutes } = req.body ?? {};
-      const b = Number(bites), st = Number(start), en = Number(end);
-      if (!['meal', 'end'].includes(kind) || !Number.isInteger(b) || b < 1 || b > 300 || !Number.isFinite(st) || !Number.isFinite(en)) return bad(res, 'Invalid meal report.');
-      if (Math.abs(Date.now() - en) > 6 * 3600e3) return bad(res, 'That report is too old.');
-      const lm = Number(localMinutes);
-      const d = new Date(st);
-      const slot = slotFromMinutes(Number.isFinite(lm) && lm >= 0 && lm < 1440 ? lm : d.getUTCHours() * 60 + d.getUTCMinutes());
-      db.prepare(`INSERT INTO meal_events (user_id, day, slot, bites, started_at, ended_at) VALUES (?,?,?,?,?,?)
-        ON CONFLICT(user_id, day, slot) DO UPDATE SET bites = MAX(bites, excluded.bites), ended_at = MAX(ended_at, excluded.ended_at)`)
-        .run(o.id, d.toISOString().slice(0, 10), slot, b, Math.round(st), Math.round(en));
-      res.json({ ok: true, slot });
-    });
   };
   setInterval(() => db.prepare("DELETE FROM cam_clips WHERE created_at < datetime('now','-2 days')").run(), 3600e3).unref?.();
   mount('/api/cam/:token', req => owner(req.params.token), 'This camera link is not valid.', req => req.params.token);
@@ -191,7 +161,6 @@ export function mountCam(app, port) {
   });
 
   // ---- the astronaut ----
-  app.get('/api/me/meal-events', requireAuth, (req, res) => res.json({ events: mealEventsFor(req.user.id, 2) }));
   app.post('/api/me/cam-link', requireAuth, (req, res) => res.json({ token: ensureToken(req.user.id, !!req.body?.rotate) }));
   app.get('/api/me/cam-status', requireAuth, (req, res) => res.json({ ...status(req.user.id), token: tokenOf(req.user.id), lan: lan(), port }));
 

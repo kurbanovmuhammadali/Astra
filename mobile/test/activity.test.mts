@@ -11,7 +11,7 @@ const fig = (kneeDrop = 0.18, lying = false): Lm[] => {
 };
 test('posture classification', () => {
   assert.equal(classify(fig(0.18)), 'standing'); assert.equal(classify(fig(0.02)), 'sitting'); assert.equal(classify(fig(0.18, true)), 'lying');
-  assert.equal(classify(null), 'absent'); assert.equal(classify(fig(), { exercise: 'push-up' }), 'exercising'); assert.equal(classify(fig(), { hipVx: 0.6 }), 'walking'); assert.equal(classify(fig(), { eating: true }), 'eating');
+  assert.equal(classify(null), 'absent'); assert.equal(classify(fig(), { exercise: 'push-up' }), 'exercising'); assert.equal(classify(fig(), { hipVx: 0.6 }), 'walking');
 });
 test('timeline ignores flicker and merges, then the report reads like a person wrote it', () => {
   let tl = createTimeline(); const T0 = new Date(2026, 10, 15, 9, 0).getTime();

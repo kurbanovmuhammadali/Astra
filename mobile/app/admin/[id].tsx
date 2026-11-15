@@ -28,7 +28,6 @@ type Detail = {
   snapshot: any | null;
   background: { cvText?: string; characteristics?: string; allergies?: string; medications?: string; conditions?: { name: string; notes: string }[]; sharedConsent?: boolean; updatedAt?: string } | null;
   handoffs?: { id: string; title: string; reason: string; missionDay: number | null; lines: { h: string; t: string }[]; queuedAt: number | null; receivedAt: string; ackAt: string | null; ackNote: string | null }[];
-  mealEvents?: { day: string; slot: string; bites: number; startedAt: number }[];
   adminNotes: string; files: { id: number; name: string; size: number }[];
 };
 const tone = (s: string) => (s === 'green' ? 'ok' : s === 'amber' ? 'watch' : s === 'red' ? 'flag' : 'none');
@@ -233,7 +232,6 @@ export default function CrewDetail() {
             <Txt v="sub">Sessions completed this week: {snap.sessionsThisWeek}</Txt>
             {snap.nutritionToday ? <Txt v="sub">Food today: {snap.nutritionToday.kcal} kcal · {snap.nutritionToday.protein} g protein · {(snap.nutritionToday.waterMl / 1000).toFixed(1)} L water{snap.numbers ? ` (targets ${snap.numbers.kcal} kcal, ${snap.numbers.protein?.[0]}–${snap.numbers.protein?.[1]} g, ${(snap.body?.weightKg * 0.035).toFixed(1)} L)` : ''}</Txt> : null}
             {snap.mealsToday ? <Txt v="sub">Meals today: {['breakfast', 'lunch', 'dinner', 'snack'].map(k => `${k} ${snap.mealsToday[k] ?? 'not marked'}`).join(' · ')}</Txt> : null}
-            {data.mealEvents?.length ? <Txt v="sub">Camera saw eating: {data.mealEvents.map(e => `${e.slot} ${new Date(e.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${e.bites}+ bites)`).join(' · ')}</Txt> : null}
             {snap.mealsWeek ? <Txt v="caption" color={K.ink2}>Last 7 days: ate {snap.mealsWeek.ate} · skipped {snap.mealsWeek.skipped} main meals</Txt> : null}
             {snap.camera ? <Txt v="sub">Camera reps today: {Object.keys(snap.camera.todayReps).length ? Object.entries(snap.camera.todayReps).map(([k, v]) => `${k} ${v}`).join(' · ') : 'none'}</Txt> : null}
             {snap.camera?.lastSessions?.length ? <Txt v="caption" color={K.ink2}>Last camera sessions: {snap.camera.lastSessions.map((w: any) => `${w.exercise} ${w.reps} reps (${w.source})`).join(' · ')}</Txt> : null}

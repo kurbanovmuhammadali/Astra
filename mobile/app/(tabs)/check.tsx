@@ -240,7 +240,7 @@ export default function CheckTab() {
       </Card>
     </View>,
     <View key="f">
-      <Txt v="sub" color={K.ink2}>Space food is precooked: just mark what you had. The camera station can tick it for you when it sees you eating.</Txt>
+      <Txt v="sub" color={K.ink2}>Space food is precooked: just mark what you had.</Txt>
       <Card style={{ marginTop: 12, paddingVertical: 4 }}>
         {SLOTS.map((sl, i) => (
           <View key={sl.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderTopWidth: i ? 1 : 0, borderTopColor: K.hair }}>

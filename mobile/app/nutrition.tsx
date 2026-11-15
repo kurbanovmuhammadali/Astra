@@ -10,7 +10,6 @@ import { Field } from '@/kit/fields';
 import { dayKey, setStore, uid, useStore } from '@/data/store';
 import { bodyNumbers } from '@/data/plan';
 import { SLOTS, markAteNow, setMealCheck } from '@/data/mealchecks';
-import { useCameraMeals } from '@/data/cammeals';
 
 const PRESETS = [
   { name: 'Oatmeal breakfast', kcal: 350, protein: 12 }, { name: 'Rehydrated main meal', kcal: 600, protein: 28 }, { name: 'Protein bar', kcal: 220, protein: 20 },
@@ -22,7 +21,6 @@ const num = (s: string) => { const v = parseFloat(s.replace(',', '.')); return N
 export default function Nutrition() {
   const profile = useStore(s => s.profile);
   const meals = useStore(s => s.meals);
-  useCameraMeals();
   const checks = useStore(s => s.mealChecks[dayKey(0)]);
   const [name, setName] = useState('');
   const [kcal, setKcal] = useState('');

@@ -15,7 +15,6 @@ import { db } from './db.js';
 import { requireAuth, publicUser } from './auth.js';
 import { isAdmin, requireAdmin } from './roles.js';
 import { readBackground, readNotes, listFiles } from './background.js';
-import { mealEventsFor } from './cam.js';
 import { dashboard, adaptivePlan } from './health/engine.js';
 
 db.exec(`
@@ -128,7 +127,6 @@ export function mountAdmin(app) {
           openHandoffs: openHandoffs(u.id),
           ...publicUser(u), readiness: d.readiness, checkedInToday: d.checkedInToday,
           alerts: { red: d.alerts.filter(a => a.level === 'red').length, amber: d.alerts.filter(a => a.level === 'amber').length },
-          cameraMeals: mealEventsFor(u.id, 1).filter(e => e.day === new Date().toISOString().slice(0, 10)).map(e => e.slot),
           conditionsCount: readBackground(u.id)?.conditions?.length ?? 0, planProgress: p.progress, hasOverride: !!ov, overrideAt: ov?.updatedAt ?? null,
           snapshot: snap ? { updatedAt: snap.updatedAt, meals: snap.mealsToday ?? null, stress: snap.stress ?? null, sessionsThisWeek: snap.sessionsThisWeek ?? null, radiation: snap.radiation ?? null } : null,
         };
@@ -144,7 +142,7 @@ export function mountAdmin(app) {
       user: publicUser(u), readiness: d.readiness, alerts: d.alerts, systems: d.systems, checkedInToday: d.checkedInToday, checkin: d.checkin,
       metrics: Object.fromEntries(['recovery', 'sleep', 'hrv', 'rhr', 'strain', 'exercise', 'mood', 'weight', 'radiation'].filter(k => d.metrics[k]).map(k => [k, slim(d.metrics[k])])),
       plan: adaptivePlan(u.id), override: readOverride(u.id), snapshot: readSnapshot(u.id),
-      background: readBackground(u.id), adminNotes: readNotes(u.id), files: listFiles(u.id), mealEvents: mealEventsFor(u.id, 3), handoffs: handoffsOf(u.id),
+      background: readBackground(u.id), adminNotes: readNotes(u.id), files: listFiles(u.id), handoffs: handoffsOf(u.id),
     });
   });
 

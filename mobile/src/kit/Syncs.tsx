@@ -1,7 +1,6 @@
 import { useCrew } from '@/data/crew';
 import { useSnapshotSync } from '@/data/snapshot';
 import { useHandoffSync } from '@/data/handoff';
-import { useCameraMeals } from '@/data/cammeals';
 import { useTeam } from '@/data/team';
 
 /**
@@ -15,7 +14,6 @@ export default function Syncs() {
   const crew = useCrew();
   useSnapshotSync(crew, !crew.synthetic);
   useHandoffSync(!crew.synthetic);
-  useCameraMeals(!crew.synthetic);
   useTeam();
   return null;
 }

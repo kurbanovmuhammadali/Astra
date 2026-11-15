@@ -12,13 +12,11 @@ import { createDetector, detect } from '@/data/incident';
 import type { DetectorState, IncidentKind } from '@/data/incident';
 import { buildReport, classify, createTimeline, observe, segments } from '@/data/activity';
 import type { ActState, Timeline } from '@/data/activity';
-import { createEating, eatStep } from '@/data/eating';
-import type { EatState } from '@/data/eating';
 import { createCounter, update } from '@/data/pose';
 import type { Counter, Lm } from '@/data/pose';
 
 type Person = { id: number; name: string; mission: string };
-type Track = { key: string; id: number | null; name: string; det: DetectorState; tl: Timeline; eat: EatState; push: Counter; pull: Counter; lastSeen: number; hip: { x: number; t: number } | null; vx: number; exUntil: number; started: number; lastReport: number; incidents: string[]; act: ActState; alert: boolean; bites: number; x: number; y: number };
+type Track = { key: string; id: number | null; name: string; det: DetectorState; tl: Timeline; push: Counter; pull: Counter; lastSeen: number; hip: { x: number; t: number } | null; vx: number; exUntil: number; started: number; lastReport: number; incidents: string[]; act: ActState; alert: boolean; x: number; y: number };
 type FaceId = { box: { x: number; y: number; w: number; h: number }; id: number | null; name: string; at: number; checked: number };
 type Pending = { uid: number; key: string; name: string; kind: IncidentKind; confidence: number; evidence: string; sendAt: number };
 type Channel = { stop: () => void; lastSeen: number };
@@ -32,7 +30,7 @@ const GRACE_MS = 8000;
  *  - streams live HD video to the flight surgeon of every recognised astronaut (WebRTC), with a JPEG fallback;
  *  - watches each person's pose with a local model: collapse, shaking and stillness raise an alert after a short confirm window
  *    that every flight surgeon and crew mate receives at once;
- *  - writes an activity report (posture, exercise, meals, objects) made on this device, no cloud AI, no video upload.
+ *  - writes an activity report (posture, exercise, objects) made on this device, no cloud AI, no video upload.
  * Nothing is recorded. Needs CAMERA_STATION=on (demo). Not a medical device.
  */
 export default function StationView({ crew, onExit }: { crew: Person[]; onExit: () => void }) {
@@ -55,7 +53,7 @@ export default function StationView({ crew, onExit }: { crew: Person[]; onExit: 
   const flushReport = useCallback((t: Track, final: boolean) => {
     if (t.id == null) return;
     const now = Date.now(), segs = segments(t.tl, now); if (!segs.length || now - t.started < 20_000) return;
-    const r = buildReport({ name: t.name, from: t.started, to: now, segs, reps: { 'push-up': t.push.reps, 'pull-up': t.pull.reps }, bites: t.bites, objects: objects.current, incidents: t.incidents });
+    const r = buildReport({ name: t.name, from: t.started, to: now, segs, reps: { 'push-up': t.push.reps, 'pull-up': t.pull.reps }, objects: objects.current, incidents: t.incidents });
     post(t.id, 'activity', { from: t.started, to: now, segments: r.segments.slice(-40), summary: r.summary }); t.lastReport = now;
     if (final) { t.started = now; t.tl = createTimeline(); }
   }, []);
@@ -91,7 +89,7 @@ export default function StationView({ crew, onExit }: { crew: Person[]; onExit: 
         if (id == null && manual.current != null) { id = manual.current; name = crew.find(p => p.id === id)?.name ?? name; }
         const key = id != null ? `a${id}` : `u${unk++}`; seenKeys.add(key);
         let t = tracks.current.get(key);
-        if (!t) { t = { key, id, name, det: createDetector(), tl: createTimeline(), eat: createEating(), push: createCounter('pushup'), pull: createCounter('pullup'), lastSeen: now, hip: null, vx: 0, exUntil: 0, started: now, lastReport: now, incidents: [], act: 'standing', alert: false, bites: 0, x: nose.x, y: nose.y }; tracks.current.set(key, t); }
+        if (!t) { t = { key, id, name, det: createDetector(), tl: createTimeline(), push: createCounter('pushup'), pull: createCounter('pullup'), lastSeen: now, hip: null, vx: 0, exUntil: 0, started: now, lastReport: now, incidents: [], act: 'standing', alert: false, x: nose.x, y: nose.y }; tracks.current.set(key, t); }
         t.id = id; t.name = name; t.lastSeen = now; t.x = nose.x; t.y = nose.y;
         if (id != null) channel(id);
         const world = (res.worldLandmarks as Lm[][] | undefined)?.[pi] ?? null;
@@ -99,9 +97,7 @@ export default function StationView({ crew, onExit }: { crew: Person[]; onExit: 
         const a = update(t.push, lm, performance.now(), world, aspect), b = update(t.pull, lm, performance.now(), world, aspect);
         if (a.reps > t.push.reps || b.reps > t.pull.reps) t.exUntil = now + 20_000; t.push = a; t.pull = b;
         const exercising = now < t.exUntil;
-        const eat = eatStep(t.eat, lm, now); t.eat = eat.state; t.bites = Math.max(t.bites, eat.state.bites);
-        if (eat.event && id != null) post(id, 'meal', { kind: eat.event.kind, bites: eat.event.bites, start: eat.event.start, end: eat.event.end, localMinutes: new Date(eat.event.start).getHours() * 60 + new Date(eat.event.start).getMinutes() });
-        t.act = classify(lm, { exercise: exercising ? 'x' : null, eating: eat.state.sessionStart != null && now - eat.state.lastBite < 20_000, hipVx: t.vx, aspect });
+        t.act = classify(lm, { exercise: exercising ? 'x' : null });
         t.tl = observe(t.tl, t.act, now);
         const d = detect(t.det, lm, now, { exercising, aspect }); t.det = d.state;
         for (const e of d.events) {

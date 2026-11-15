@@ -15,7 +15,7 @@ import type { Incident } from '@/live/Live';
 
 export type CrewRow = {
   id: number; name: string; email: string; mission: string; missionYears: number | null; readiness: number; checkedInToday: boolean;
-  alerts: { red: number; amber: number }; conditionsCount: number; cameraMeals?: string[]; planProgress: number; hasOverride: boolean; overrideAt: string | null; openHandoffs?: number;
+  alerts: { red: number; amber: number }; conditionsCount: number; planProgress: number; hasOverride: boolean; overrideAt: string | null; openHandoffs?: number;
   snapshot: { updatedAt: string; meals?: Record<string, string> | null; stress: { level: string } | null; sessionsThisWeek: number | null; radiation: { rate: number | null } | null } | null;
 };
 export const pct = (p: number) => (p > 1 ? p / 100 : p);

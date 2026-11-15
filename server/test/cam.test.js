@@ -47,21 +47,11 @@ test('bad frames are rejected', async () => {
   assert.equal((await phone('POST', `/api/cam/${token}/frame`, { image: dataUrl(Buffer.from('not a jpeg')) })).status, 400);
   assert.equal((await phone('POST', `/api/cam/${token}/frame`, { image: dataUrl(Buffer.concat([JPEG.subarray(0, 4), Buffer.alloc(210 * 1024)])) })).status, 413);
 });
-test('camera meal detection: reported by the phone, shown to the astronaut and the surgeon', async () => {
-  const now = Date.now();
-  const rep = (o) => phone('POST', `/api/cam/${token}/meal`, { kind: 'meal', bites: 4, start: now - 20000, end: now - 5000, localMinutes: 7 * 60 + 40, ...o });
-  assert.equal((await rep({})).body.slot, 'breakfast');
-  assert.equal((await rep({ bites: 9, kind: 'end', end: now })).status, 200); // same sitting: bites grow, still one meal
-  assert.equal((await rep({ localMinutes: 13 * 60, bites: 6 })).body.slot, 'lunch');
-  const mine = (await crew('GET', '/api/me/meal-events')).body.events;
-  assert.deepEqual(mine.map(e => e.slot).sort(), ['breakfast', 'lunch']);
-  assert.equal(mine.find(e => e.slot === 'breakfast').bites, 9);
-  const d = (await admin('GET', `/api/admin/crew/${me.id}`)).body;
-  assert.equal(d.mealEvents.length, 2);
-  assert.ok((await admin('GET', '/api/admin/crew')).body.crew.find(c => c.id === me.id).cameraMeals.includes('lunch'));
-  for (const bad of [{ bites: 0 }, { bites: 999 }, { kind: 'x' }, { end: now - 10 * 3600e3 }]) assert.equal((await rep(bad)).status, 400);
-  assert.equal((await phone('POST', '/api/cam/not-a-real-token-at-all-0000/meal', { kind: 'meal', bites: 5, start: now, end: now })).status, 404);
-  assert.equal((await crew('GET', '/api/admin/crew')).status, 403);
+test('the camera does NOT track eating: no meal endpoints, no meal data for the doctor', async () => {
+  assert.equal((await phone('POST', `/api/station/${me.id}/meal`, { kind: 'meal', bites: 12, start: Date.now() - 600e3, end: Date.now() })).status, 404);
+  assert.equal((await crew('GET', '/api/me/meal-events')).status, 404);
+  const d = (await admin('GET', `/api/admin/crew/${me.id}`)).body; assert.equal(d.mealEvents, undefined);
+  assert.equal((await admin('GET', '/api/admin/crew')).body.crew.find(c => c.id === me.id).cameraMeals, undefined);
 });
 test('stop ends the stream; rotating the link kills the old one', async () => {
   assert.equal((await phone('POST', `/api/cam/${token}/stop`, {})).status, 200);
@@ -83,7 +73,6 @@ test('camera station: pick an astronaut (no sign-in), film him, the surgeon sees
   assert.equal((await phone('GET', `/api/admin/crew/${me.id}/cam/frame.jpg`, null, true)).status, 401); // the station cannot read frames back
   assert.equal((await phone('POST', `/api/station/${me.id}/frame`, { image: dataUrl(Buffer.from('nope')) })).status, 400);
   const now = Date.now();
-  assert.equal((await phone('POST', `/api/station/${me.id}/meal`, { kind: 'meal', bites: 5, start: now - 9000, end: now, localMinutes: 19 * 60 })).body.slot, 'dinner');
   const surgeon = (await admin('GET', '/api/auth/me')).body.user;
   assert.equal((await phone('GET', `/api/station/${surgeon.id}/info`)).status, 404); // cannot film the surgeon account
   assert.equal((await phone('GET', '/api/station/99999/info')).status, 404);
