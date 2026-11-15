@@ -164,3 +164,22 @@ export function startWhoopAutoSync(everyMs = 10 * 60e3) {
   };
   autoTimer = setInterval(run, everyMs); autoTimer.unref?.(); setTimeout(run, 30e3).unref?.();
 }
+
+const CHECK_METRICS = ['recovery', 'hrv', 'rhr', 'sleep', 'spo2', 'strain', 'weight'];
+/** One call that answers "does WHOOP work for this account?": keys, connection, a live test call with the token, and what was imported. */
+export async function whoopCheck(userId) {
+  const row = db.prepare("SELECT status, last_sync, meta FROM integrations WHERE user_id = ? AND provider = 'whoop'").get(userId);
+  let detail = null; try { detail = JSON.parse(row?.meta || '{}').last ?? null; } catch { /* no detail */ }
+  const out = { configured: whoopConfigured(), connected: row?.status === 'connected', status: row?.status ?? 'disconnected', lastSync: row?.last_sync ?? null, detail, api: null, latest: {}, total: 0 };
+  if (out.connected) {
+    try {
+      const at = await accessToken(userId); // refreshes the token when it is old: a failure here means "reconnect"
+      const r = await fetch(`${API}/user/measurement/body`, { headers: { Authorization: `Bearer ${at}` }, signal: AbortSignal.timeout(10000) });
+      out.api = { ok: r.ok, status: r.status };
+    } catch (e) { out.api = { ok: false, status: 0, error: String(e.message).slice(0, 120) }; }
+  }
+  const last = db.prepare("SELECT value, unit, recorded_at FROM measurements WHERE user_id = ? AND metric = ? AND source = 'whoop' ORDER BY recorded_at DESC LIMIT 1");
+  for (const m of CHECK_METRICS) { const l = last.get(userId, m); if (l) out.latest[m] = { value: l.value, unit: l.unit, at: l.recorded_at }; }
+  out.total = db.prepare("SELECT COUNT(*) n FROM measurements WHERE user_id = ? AND source = 'whoop'").get(userId).n;
+  return out;
+}

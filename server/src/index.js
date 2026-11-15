@@ -20,7 +20,7 @@ import {
 } from './auth.js';
 import { METRICS, SYSTEMS, SYMPTOMS } from './health/catalog.js';
 import { dashboard, series, metricSnapshot, adaptivePlan, missionPlan, today, toSql, baselineOf, evaluate } from './health/engine.js';
-import { whoopConfigured, authorizeUrl, consumeState, exchangeCode, syncWhoop, disconnectWhoop, startWhoopAutoSync } from './whoop.js';
+import { whoopConfigured, authorizeUrl, consumeState, exchangeCode, syncWhoop, disconnectWhoop, startWhoopAutoSync, whoopCheck } from './whoop.js';
 import { companionConfigured, assistantReply } from './companion.js';
 import { mailConfigured, sendMail, codeEmail } from './mail.js';
 import { mountAdmin } from './admin.js';
@@ -465,6 +465,7 @@ app.get('/api/integrations/whoop/callback', async (req, res) => {
   } catch (e) { console.error(e); back(st.platform, { whoop: 'error' }); }
 });
 
+app.get('/api/integrations/whoop/check', requireAuth, async (req, res) => { try { res.json(await whoopCheck(req.user.id)); } catch { bad(res, 'The check failed.', 502); } });
 app.post('/api/integrations/whoop/sync', requireAuth, async (req, res) => {
   try { res.json(await syncWhoop(req.user.id)); } catch (e) { bad(res, e.message, 502); }
 });

@@ -11,9 +11,14 @@ import { LEGAL_VERSION, requireAuth } from './auth.js';
 import { seedDemo } from './demo-data.js';
 import { learnNorms, analyzeUser } from './brain.js';
 import { deflateSync } from 'node:zlib';
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 
 /** The private link of the demo relative (Alex's mother). Anyone can open it from the login page. */
 export const DEMO_FAMILY_TOKEN = 'demo-family-mother-alex-2026';
+
+const CLIP = resolve(dirname(fileURLToPath(import.meta.url)), '../assets/demo-clip.webm'); // a 6 s video made for the demo (Earth from orbit, "Hi Mom")
 
 /** A small generated picture (Earth's edge in the dark), so the demo has a photo without any file or tool. PNG built by hand. */
 function demoPhoto() {
@@ -125,6 +130,10 @@ export function seedDemoFamily() {
       say(0, 'Hi Mom! Day 118 and all is well. The view from the window today is beautiful. I miss your cooking.');
       say(0, 'Earth, a few minutes ago. It takes a while for this to reach you.', 'photo', 'image/png', demoPhoto());
       say(1, 'We are so proud of you, Alex. Everyone at home sends love. Dad fixed the fence!');
+    }
+    const fam = db.prepare('SELECT id FROM family_contacts WHERE token = ?').get(DEMO_FAMILY_TOKEN);
+    if (fam && existsSync(CLIP) && !db.prepare("SELECT 1 FROM family_messages WHERE contact_id = ? AND kind = 'video'").get(fam.id)) {
+      db.prepare("INSERT INTO family_messages (contact_id, from_family, text, kind, mime, media, seconds) VALUES (?,0,?,'video','video/webm',?,6)").run(fam.id, 'A little hello from orbit.', readFileSync(CLIP));
     }
 
 }

@@ -2,7 +2,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Activity } from 'lucide-react-native';
+import { Activity, HeartPulse } from 'lucide-react-native';
 import { ListGroup, ListRow, PageHead, TopBar } from '@/kit/ui';
 import { SourceSwitch } from '@/kit/SourceSwitch';
 import { Page } from '@/kit/page';
@@ -17,6 +17,7 @@ export default function Connected() {
       <PageHead kicker="Sources" title="Connected data" sub="WHOOP is the only wearable. Connect it, or enter your numbers by hand. Every value shows which source it came from." style={{ marginTop: 6 }} />
       <ListGroup style={{ marginTop: 16 }}>
         <ListRow icon={Activity} title="WHOOP" sub="Recovery, sleep, HRV, strain · syncs every 20 minutes" right={<Status on={whoop} />} onPress={() => router.push('/integrations')} />
+        <ListRow icon={HeartPulse} title="WHOOP check" sub="Does it work? Connection test and live heartbeat" onPress={() => router.push('/whoop-check')} />
       </ListGroup>
       <View style={{ marginTop: 12 }}><SourceSwitch providers={data?.providers} onChanged={reload} /></View>
     </Page>

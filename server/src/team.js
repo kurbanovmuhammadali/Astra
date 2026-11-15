@@ -216,7 +216,8 @@ export function mountTeam(app) {
   app.delete('/api/me/family/:id', requireAuth, (req, res) => { db.prepare('DELETE FROM family_contacts WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.user.id); res.json({ ok: true }); });
   app.get('/api/me/family/:id/messages', requireAuth, (req, res) => {
     const f = db.prepare('SELECT * FROM family_contacts WHERE id = ? AND user_id = ?').get(Number(req.params.id), req.user.id); if (!f) return bad(res, 'Not found.', 404);
-    const msgs = db.prepare(`SELECT ${MSG_COLS} FROM family_messages WHERE contact_id = ? ORDER BY id DESC LIMIT 40`).all(f.id).reverse();
+    const after = Number(req.query.after) || 0; // only what is new since the last look: a slow link is not used for things already shown
+    const msgs = db.prepare(`SELECT ${MSG_COLS} FROM family_messages WHERE contact_id = ? AND id > ? ORDER BY id DESC LIMIT 40`).all(f.id, after).reverse();
     if (msgs.length) db.prepare('INSERT INTO family_read (contact_id, last_read) VALUES (?,?) ON CONFLICT(contact_id) DO UPDATE SET last_read = excluded.last_read').run(f.id, msgs[msgs.length - 1].id);
     res.json({ messages: msgs });
   });
@@ -237,7 +238,8 @@ export function mountTeam(app) {
   app.get('/api/family/:token/info', (req, res) => { const f = byToken(req.params.token); if (!f) return bad(res, 'This link is not valid.', 404); res.json({ name: f.name, astronaut: first(f.astro), available: onlineUser(f.user_id) }); });
   app.get('/api/family/:token/messages', (req, res) => {
     const f = byToken(req.params.token); if (!f) return bad(res, 'This link is not valid.', 404);
-    res.json({ messages: db.prepare(`SELECT ${MSG_COLS} FROM family_messages WHERE contact_id = ? ORDER BY id DESC LIMIT 40`).all(f.id).reverse() });
+    const after = Number(req.query.after) || 0;
+    res.json({ messages: db.prepare(`SELECT ${MSG_COLS} FROM family_messages WHERE contact_id = ? AND id > ? ORDER BY id DESC LIMIT 40`).all(f.id, after).reverse() });
   });
   app.post('/api/family/:token/messages', (req, res) => {
     const f = byToken(req.params.token); if (!f) return bad(res, 'This link is not valid.', 404);

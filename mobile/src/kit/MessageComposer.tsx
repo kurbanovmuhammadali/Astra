@@ -36,7 +36,7 @@ export function OutboxList({ target }: { target: Target }) {
 }
 
 /** Photo from the device, shrunk to at most 1600 px and saved as a JPEG (a normal photo is then 200 to 500 KB). */
-async function shrinkPhoto(file: File): Promise<Blob> {
+export async function shrinkPhoto(file: File): Promise<Blob> {
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
   const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
