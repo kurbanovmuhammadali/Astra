@@ -29,7 +29,7 @@ function Boot() {
 }
 
 /** Without signing in, every page sends you to Welcome, except the entrance pages, the family code sign-in (and the chat it opens) and the camera. */
-const PUBLIC = ['/', '/intro', '/welcome', '/login', '/name', '/age', '/mission', '/goal', '/data', '/email', '/code', '/face', '/team', '/done', '/doctor', '/relative', '/camera'];
+const PUBLIC = ['/', '/intro', '/welcome', '/login', '/name', '/age', '/mission', '/goal', '/data', '/email', '/code', '/face', '/team', '/done', '/doctor', '/relative', '/camera', '/demo'];
 const PUBLIC_PREFIX = ['/f/', '/cam/', '/legal/'];
 function AuthGate() {
   const { user, ready } = useAuth();
@@ -57,7 +57,7 @@ export default function Root() {
         <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'fade_from_bottom' }}>
           {/* onboarding screens animate themselves (src/motion.tsx), so the native stack transition is off */}
-          {['intro', 'welcome', '(auth)/name', '(auth)/age', '(auth)/mission', '(auth)/goal', '(auth)/data', '(auth)/email', '(auth)/code', '(auth)/face', '(auth)/team', '(auth)/login', '(auth)/doctor', 'relative', '(auth)/done', 'cam/[token]', 'camera', 'f/[token]'].map(n => (
+          {['intro', 'welcome', '(auth)/name', '(auth)/age', '(auth)/mission', '(auth)/goal', '(auth)/data', '(auth)/email', '(auth)/code', '(auth)/face', '(auth)/team', '(auth)/login', '(auth)/doctor', 'relative', 'demo', '(auth)/done', 'cam/[token]', 'camera', 'f/[token]'].map(n => (
             <Stack.Screen key={n} name={n} options={{ animation: 'none', contentStyle: { backgroundColor: '#F8EEE8' } }} />
           ))}
           <Stack.Screen name="(tabs)" options={{ animation: 'fade', contentStyle: { backgroundColor: K.canvas } }} />
