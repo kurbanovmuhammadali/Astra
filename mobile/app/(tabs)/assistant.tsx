@@ -17,7 +17,9 @@ import { AiAvatar, AiIntro } from '@/AiAvatar';
 import { getFlag, setFlag } from '@/storage';
 import { usePageMotion } from '@/kit/pageMotion';
 import { leaveTab } from '@/kit/transition';
-import { SUGGESTIONS, ask, titleFor } from '@/data/assistant';
+import { SUGGESTIONS, askFull, titleFor } from '@/data/assistant';
+import { api } from '@/api';
+import { Button } from '@/kit/ui';
 import { useCrew } from '@/data/crew';
 import { ChatMsg, getStore, setStore, uid, useStore } from '@/data/store';
 
@@ -36,8 +38,30 @@ function Bubble({ m, streaming }: { m: ChatMsg; streaming?: boolean }) {
       ))}
       <View style={[{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderBottomRightRadius: me ? 6 : 20, borderBottomLeftRadius: me ? 20 : 6, backgroundColor: me ? K.copper : K.cardSolid, borderWidth: me ? 0 : 1, borderColor: K.hair }, !me && ELEV.card]}>
         {me ? <Txt v="body" color="#fff">{m.text}</Txt> : <Rich text={m.text} streaming={streaming} />}
+        {!me && !streaming && m.proposals?.length ? <Proposals msg={m} /> : null}
       </View>
     </Animated.View>
+  );
+}
+
+/** Changes the SI proposes (day off, schedule, norm). Nothing happens until the person taps Apply. */
+function Proposals({ msg }: { msg: ChatMsg }) {
+  const decide = async (p: NonNullable<ChatMsg['proposals']>[number], action: 'apply' | 'dismiss') => {
+    try { await api(`/api/me/adjustments/${p.id}`, { body: { action } }); } catch { /* a norm proposal is the doctor's to decide */ }
+    setStore(s => ({ ...s, chats: s.chats.map(c => ({ ...c, messages: c.messages.map(x => (x.id === msg.id ? { ...x, proposals: x.proposals?.map(y => (y.id === p.id ? { ...y, state: action === 'apply' ? 'applied' : 'dismissed' } : y)) } : x)) })) }));
+  };
+  return (
+    <View style={{ marginTop: 10, gap: 8 }}>
+      {msg.proposals!.map(p => (
+        <View key={p.id} style={{ padding: 10, borderRadius: 14, backgroundColor: K.copperTint, borderWidth: 1, borderColor: K.hair2 }}>
+          <Txt v="subM">{p.title}{p.day ? ` · ${p.day}` : ''}</Txt>
+          {p.detail ? <Txt v="caption" color={K.ink2} style={{ marginTop: 2 }}>{p.detail}</Txt> : null}
+          {p.kind === 'norm' || p.needsDoctor ? <Txt v="caption" color={K.ink3} style={{ marginTop: 4 }}>Sent to your doctor for approval.</Txt>
+            : p.state ? <Txt v="caption" color={p.state === 'applied' ? K.ok : K.ink3} style={{ marginTop: 4 }}>{p.state === 'applied' ? 'Applied to your plan' : 'Dismissed'}</Txt>
+              : <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><Button small title="Apply" onPress={() => decide(p, 'apply')} /><Button small kind="secondary" title="Dismiss" onPress={() => decide(p, 'dismiss')} /></View>}
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -129,7 +153,8 @@ export default function Assistant() {
     setDraft(''); setFiles([]); setHeard('');
     setState('thinking'); setTyping(true);
     const history = [...(getStore().chats.find(c => c.id === id)?.messages ?? [])];
-    const reply = await ask(history, ctx(), sent);
+    const full = await askFull(history, ctx(), sent);
+    const reply = full.reply;
     setTyping(false);
     // stream the reply word by word while the orb "speaks"
     setState('speaking');
@@ -141,7 +166,7 @@ export default function Assistant() {
       setStream({ ...sm, text: words.slice(0, i).join(' ') });
     }
     setStream(null);
-    push(id, { ...sm, text: reply, at: Date.now() });
+    push(id, { ...sm, text: reply, at: Date.now(), proposals: full.proposals });
     haptic.success();
     if (!(voiceOn && viaVoice)) setState('ready');
   };

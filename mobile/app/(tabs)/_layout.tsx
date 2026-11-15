@@ -87,6 +87,7 @@ export default function TabsLayout() {
   const path = usePathname();
   if (!ready) return <PageSkeleton kind={skeletonKind(path)} />;
   if (!user) return <Redirect href="/welcome" />;
+  if (user.role === 'surgeon' || user.role === 'leader') return <Redirect href={user.role === 'leader' ? '/admin/leader' : '/admin'} />; // doctors use their own portal
   const tabs = (
     <Tabs tabBar={p => (sidebar ? null : <Dock {...p} />)} screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: K.canvas }, animation: native ? 'shift' : 'none' }}>
       <Tabs.Screen name="today" />

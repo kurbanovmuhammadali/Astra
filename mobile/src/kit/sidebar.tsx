@@ -9,6 +9,7 @@ import { K } from './tokens';
 import { Kicker, Pressy, Txt } from './core';
 import { Dot } from './ui';
 import { leaveTab } from './transition';
+import { DoctorSidebar } from './doctorNav';
 
 // Home · Mission · Check · Body · Profile  (Training lives in Mission › Countermeasures; Assistant on Home, hidden in judge mode)
 export const TABS: { name: string; icon: any; label: string }[] = [
@@ -33,6 +34,7 @@ export function Sidebar() {
   const path = usePathname();
   const { user } = useAuth();
   const tools = user?.leader ? [...TOOLS, { to: '/admin/leader', icon: Stethoscope, label: 'Team overview' }, { to: '/admin', icon: Stethoscope, label: 'Doctor console' }] : user?.admin || user?.role === 'surgeon' ? [...TOOLS, { to: '/admin', icon: Stethoscope, label: 'Surgeon console' }] : TOOLS;
+  if (path.startsWith('/admin') || user?.role === 'surgeon' || user?.role === 'leader') return <DoctorSidebar />; // doctors have their own portal
   const cur = TABS.find(t => path.startsWith('/' + t.name))?.name ?? (path === '/' ? 'today' : null);
   return (
     <View style={{ width: 252, paddingTop: 30, paddingHorizontal: 18, paddingBottom: 22, borderRightWidth: 1, borderRightColor: K.hair, backgroundColor: 'rgba(255,250,246,0.6)' }}>

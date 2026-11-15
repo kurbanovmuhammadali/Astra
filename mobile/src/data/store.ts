@@ -5,7 +5,8 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
-export type ChatMsg = { id: string; role: 'user' | 'astra'; text: string; at: number; files?: string[] };
+export type Proposal = { id: number; kind: string; day: string | null; title: string; detail: string; needsDoctor?: boolean; state?: 'applied' | 'dismissed' };
+export type ChatMsg = { id: string; role: 'user' | 'astra'; text: string; at: number; files?: string[]; proposals?: Proposal[] };
 export type Chat = { id: string; title: string; sub: string; at: number; messages: ChatMsg[] };
 
 export type AppState = {

@@ -17,7 +17,7 @@ import { loadStore } from '@/data/store';
 import { LiveProvider } from '@/live/Live';
 
 /** Pushed screens inside the crew app slide in natively on iOS; on web each page animates itself (src/kit/page.tsx). */
-const PUSHED = ['signals', 'assistant/history', 'assistant/menu', 'training/sets', 'training/[id]', 'training/setup', 'profile/edit', 'profile/privacy', 'profile/connected', 'profile/account', 'profile/presentation', 'profile/face', 'integrations', 'report', 'metric/[key]', 'legal/[doc]', 'radiation', 'eva', 'eva-check', 'radiation-log', 'research-data', 'formcheck', 'research', 'profile/briefing', 'crew', 'family', 'wellbeing', 'shelter', 'daily', 'background', 'nutrition', 'mission-plan', 'attention', 'judge', 'admin/reports', 'admin/index', 'admin/[id]', 'admin/leader'];
+const PUSHED = ['signals', 'assistant/history', 'assistant/menu', 'training/sets', 'training/[id]', 'training/setup', 'profile/edit', 'profile/privacy', 'profile/connected', 'profile/account', 'profile/presentation', 'profile/face', 'integrations', 'report', 'metric/[key]', 'legal/[doc]', 'radiation', 'eva', 'eva-check', 'radiation-log', 'research-data', 'formcheck', 'research', 'profile/briefing', 'crew', 'family', 'wellbeing', 'shelter', 'daily', 'background', 'nutrition', 'mission-plan', 'attention', 'judge', 'admin/reports', 'admin/index', 'admin/[id]', 'admin/leader', 'admin/voice'];
 
 /** Reload skeleton until sign-in state is known (min ~0.7 s so it reads as a deliberate loading state).
  *  Its shape matches the page being opened (Home, Mission, AI, Body, Profile, lists, sign-up…). */

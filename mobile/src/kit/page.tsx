@@ -13,6 +13,8 @@ import { K, native } from './tokens';
 import { usePageMotion } from './pageMotion';
 import { FocusReplay, Rise, ScrollBus, Txt, makeScrollBus, useLayout, useLoop } from './core';
 import { Sidebar } from './sidebar';
+import { DoctorBar } from './doctorNav';
+import { usePathname } from 'expo-router';
 
 function Glow({ size, color, opacity }: { size: number; color: string; opacity: number }) {
   const id = React.useMemo(() => 'g' + Math.random().toString(36).slice(2, 7), []);
@@ -59,13 +61,14 @@ type PageProps = {
 export function Page({ children, title, header, footer, tabs, maxWidth = 1180, stagger = true, scroll = true, onRefresh, contentStyle }: PageProps) {
   const insets = useSafeAreaInsets();
   const { gutter, sidebar } = useLayout();
+  const isDoc = usePathname().startsWith('/admin');
   const y = useRef(new Animated.Value(0)).current;
   const bus = useRef(makeScrollBus()).current;
   const scrollRef = useRef<any>(null);
   // page-level motion (web): see ./transition and ./pageMotion
   const motion = usePageMotion({ tabs, onBlur: () => { try { scrollRef.current?.scrollTo({ y: 0, animated: false }); } catch {} } });
   const [refreshing, setRefreshing] = React.useState(false);
-  const bottom = (tabs && !sidebar ? 110 : 32) + insets.bottom + (footer ? 84 : 0);
+  const bottom = (isDoc && !sidebar ? 92 : tabs && !sidebar ? 110 : 32) + insets.bottom + (footer ? 84 : 0);
   const top = insets.top + (sidebar ? 26 : 10);
   const kids = React.Children.toArray(children).filter(Boolean);
   const body = stagger ? kids.map((c, i) => <Rise key={i} i={i}>{c}</Rise>) : kids;
@@ -116,7 +119,7 @@ export function Page({ children, title, header, footer, tabs, maxWidth = 1180, s
   return (
     <FocusReplay>
       <ScrollBus.Provider value={bus}>
-        {sidebar && !tabs ? <View style={{ flex: 1, flexDirection: 'row', backgroundColor: K.canvas }}><Sidebar /><View style={{ flex: 1, overflow: 'hidden' }}>{moving}</View></View> : moving}
+        {sidebar && !tabs ? <View style={{ flex: 1, flexDirection: 'row', backgroundColor: K.canvas }}><Sidebar /><View style={{ flex: 1, overflow: 'hidden' }}>{moving}</View></View> : isDoc ? <View style={{ flex: 1 }}>{moving}<DoctorBar /></View> : moving}
       </ScrollBus.Provider>
     </FocusReplay>
   );

@@ -4,7 +4,7 @@
  */
 import { api } from '../api';
 import { fmtSleep } from './crew';
-import type { ChatMsg } from './store';
+import type { ChatMsg, Proposal } from './store';
 import { CARE_MESSAGE, CRISIS } from './safety';
 
 export type AssistantContext = { name: string; recovery: number | null; sleep: number | null; hrv: number | null; rhr: number | null; dose: number | null; doseTotal: number | null; missionDay: number; duration: number };
@@ -40,21 +40,23 @@ function demoReply(q: string, c: AssistantContext, files?: string[]): string {
 
 export type Attachment = { name: string; mime: string; text?: string; data?: string };
 
-export async function ask(history: ChatMsg[], ctx: AssistantContext, attachments: Attachment[] = []): Promise<string> {
+export async function ask(history: ChatMsg[], ctx: AssistantContext, attachments: Attachment[] = []): Promise<string> { return (await askFull(history, ctx, attachments)).reply; }
+
+export async function askFull(history: ChatMsg[], ctx: AssistantContext, attachments: Attachment[] = []): Promise<{ reply: string; proposals?: Proposal[] }> {
   const last = history[history.length - 1];
-  if (last && CRISIS.test(last.text)) return CARE_MESSAGE; // never leave a distress message to a template
+  if (last && CRISIS.test(last.text)) return { reply: CARE_MESSAGE }; // never leave a distress message to a template
   let note = '';
   if (ASSISTANT_PROVIDER === 'server') {
     try {
-      const r = await api<{ reply: string; refused?: boolean }>('/api/assistant', { body: { messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })), context: ctx, ...(attachments.length ? { attachments } : {}) } });
-      if (r.reply && !r.refused) return r.reply;
+      const r = await api<{ reply: string; refused?: boolean; proposals?: Proposal[] }>('/api/assistant', { body: { messages: history.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text })), context: ctx, ...(attachments.length ? { attachments } : {}) } });
+      if (r.reply && !r.refused) return { reply: r.reply, proposals: r.proposals?.length ? r.proposals : undefined };
       note = 'the SI declined this message';
     } catch (e: any) {
       note = e?.status === 503 ? 'SI is not set up on this server: add ANTHROPIC_API_KEY' : e?.status === 429 ? 'the SI is busy' : 'the SI could not be reached';
     }
   }
   await new Promise(r => setTimeout(r, 450 + Math.random() * 350));
-  return demoReply(last?.text ?? '', ctx, last?.files) + (note ? `\n\n(Demo reply: ${note}.)` : '');
+  return { reply: demoReply(last?.text ?? '', ctx, last?.files) + (note ? `\n\n(Demo reply: ${note}.)` : '') };
 }
 
 export const titleFor = (q: string) => {

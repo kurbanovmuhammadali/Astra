@@ -71,10 +71,10 @@ const lan = () => Object.values(networkInterfaces()).flat().filter(i => i && i.f
 
 export function mountCam(app, port) {
   const isCrew = id => !!db.prepare("SELECT 1 FROM users WHERE id = ? AND role IN ('astronaut','analog')").get(id);
-  // The camera station (/camera): a phone or laptop that films crew members. Locally (CAMERA_STATION=on, not production) it
-  // needs no sign-in for demos. In production it needs a signed-in account: a flight surgeon may film anyone, a crew member
-  // only themselves and their own crew mates.
-  const demoStation = () => process.env.CAMERA_STATION === 'on' && process.env.NODE_ENV !== 'production';
+  // The camera station (/camera): a phone or laptop that films crew members. It needs NO account: open the page, pick a name, film.
+  // Switch it off with CAMERA_STATION=off (then only signed-in accounts can use it: a flight surgeon may film anyone, a crew
+  // member only themselves and their own crew mates).
+  const demoStation = () => process.env.CAMERA_STATION !== 'off';
     const stationOn = req => demoStation() || !!sessionUser(req);
   /** ids this request may film / identify (null = everyone, demo mode only). */
   const stationIds = req => {
@@ -166,7 +166,8 @@ export function mountCam(app, port) {
     if (!stationOn(req)) return bad(res, 'Sign in to use the camera station.', 401);
     const ids = stationIds(req);
     const all = db.prepare("SELECT id, name, mission FROM users WHERE role IN ('astronaut','analog') ORDER BY name").all();
-    res.json({ crew: ids === null ? all : all.filter(c => ids.includes(c.id)) });
+    const shown = ids === null ? all : all.filter(c => ids.includes(c.id));
+    res.json({ crew: ids === null ? shown.map(c => ({ ...c, name: c.name.replace(/^(\S+)\s+(\S).*$/, '$1 $2.') })) : shown }); // no sign-in: first name and initial only
   });
 
   // ---- the astronaut ----

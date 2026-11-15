@@ -8,7 +8,9 @@ import { Button } from '@/kit/ui';
 import { useAuth } from '@/auth';
 import { api } from '@/api';
 import CallPanel from './CallPanel';
-import { tone, useCalls } from './calls';
+import { tone, unlockAudio, useCalls } from './calls';
+import { useMission } from '@/data/mission';
+import { VoiceRecorder } from '@/kit/VoiceRecorder';
 import type { CallKind } from './calls';
 
 export type Incident = { id: number; userId: number; name: string; kind: string; label: string; severity: string; confidence: number | null; evidence: string | null; status: string; escalated: boolean; at: string; responding?: string[] };
@@ -29,6 +31,11 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [unreadFamily, setUnread] = useState(0);
   const alarm = useRef<null | (() => void)>(null);
   const isAdmin = !!user?.admin || user?.role === 'surgeon';
+  const delayMin = useMission().delay ?? 0; // one-way signal delay to Earth, in minutes
+  const slow = !isAdmin && delayMin * 60 > 3; // a live call needs a round trip of a few seconds at most
+  const [msgTo, setMsgTo] = useState<null | { to: 'doctors' | number; name: string; reason: 'slow' | 'noanswer' }>(null);
+  const lastTarget = useRef<null | { to: string; kind: CallKind; name: string }>(null);
+  useEffect(() => { if (!web || !user) return; unlockAudio(); try { if ((window as any).Notification?.permission === 'default') (window as any).Notification.requestPermission(); } catch { /* optional */ } }, [user?.id]);
 
   const onEvent = useCallback((m: any) => {
     if (m.type === 'incident') setIncidents(a => [m.incident, ...a.filter(x => x.id !== m.incident.id)]);
@@ -50,9 +57,12 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const respond = (i: Incident, kind: 'seen' | 'responding') => api(`/api/alerts/${i.id}/ack`, { body: { kind } }).catch(() => {});
   const resolve = (i: Incident, status: 'resolved' | 'false_alarm') => api(`/api/admin/alerts/${i.id}/resolve`, { body: { status } }).catch(() => {});
   const top = open[0];
+  const place = (to: string, kind: CallKind, name: string) => { lastTarget.current = { to, kind, name }; if (slow && kind === 'doctor') { setMsgTo({ to: 'doctors', name, reason: 'slow' }); return; } startCall(to, kind, name); };
+  const noAnswerTarget = () => { const t = lastTarget.current; if (!t || t.kind !== 'doctor') return undefined; const id = /^u:(\d+)$/.exec(t.to)?.[1]; return () => setMsgTo({ to: isAdmin && id ? Number(id) : 'doctors', name: t.name, reason: 'noanswer' }); };
+  const fmtDelay = delayMin >= 1 ? `${Math.round(delayMin)} minutes` : `${Math.round(delayMin * 60)} seconds`;
 
   return (
-    <Ctx.Provider value={{ connected, incidents, call: (to, kind, name) => startCall(to, kind, name), busy: call.phase !== 'idle', unreadFamily }}>
+    <Ctx.Provider value={{ connected, incidents, call: place, busy: call.phase !== 'idle', unreadFamily }}>
       {children}
       {web && user && top && call.phase === 'idle' ? (
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 8000, backgroundColor: 'rgba(120,10,10,0.94)', alignItems: 'center', justifyContent: 'center', padding: 24 } as any}>
@@ -61,7 +71,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
           <Txt v="hero" color="#fff" center style={{ marginTop: 8, fontSize: 36 }}>{top.name}</Txt>
           <Txt v="title" color="#fff" center style={{ marginTop: 6 }}>{top.label}</Txt>
           {top.evidence ? <Txt v="sub" color="#FFD2C8" center style={{ marginTop: 8, maxWidth: 420 }}>{top.evidence}{top.confidence != null ? ` · confidence ${Math.round(top.confidence * 100)}%` : ''}</Txt> : null}
-          <Txt v="caption" color="#FFD2C8" center style={{ marginTop: 8, maxWidth: 420 }}>Detected automatically by the camera's local SI. It can be wrong: check on the person and use the call button.</Txt>
+          <Txt v="caption" color="#FFD2C8" center style={{ marginTop: 8, maxWidth: 420 }}>{top.kind === 'manual' ? 'They pressed SOS. Check on the person and use the call button.' : "Detected automatically by the camera's local SI. It can be wrong: check on the person and use the call button."}</Txt>
           {top.responding?.length ? <Txt v="subM" color="#fff" center style={{ marginTop: 10 }}>Responding: {top.responding.join(', ')}</Txt> : null}
           <View style={{ gap: 10, marginTop: 22, width: '100%', maxWidth: 360 }}>
             <Button title="I am responding" onPress={() => respond(top, 'responding')} />
@@ -82,7 +92,18 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
           </View>
         </Pressy>
       ) : null}
-      <CallPanel call={call} local={local} remote={remote} accept={accept} decline={decline} hangup={hangup} mute={mute} video={video} />
+      <CallPanel call={call} local={local} remote={remote} accept={accept} decline={decline} hangup={hangup} mute={mute} video={video} onMessage={noAnswerTarget()} />
+      {web && user && msgTo && call.phase === 'idle' ? (
+        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 8500, backgroundColor: 'rgba(28,18,13,0.92)', alignItems: 'center', justifyContent: 'center', padding: 20 } as any}>
+          <View style={{ width: '100%', maxWidth: 440, backgroundColor: K.cardSolid, borderRadius: 22, padding: 20 }}>
+            <Txt v="mono" color={K.copperInk} upper>{msgTo.reason === 'slow' ? 'Delayed link' : 'No answer'}</Txt>
+            <Txt v="title" style={{ marginTop: 6 }}>Voice message to {msgTo.to === 'doctors' ? 'the flight surgeons' : msgTo.name}</Txt>
+            <Txt v="sub" color={K.ink2} style={{ marginTop: 8, lineHeight: 21 }}>{msgTo.reason === 'slow' ? `The signal needs about ${fmtDelay} to cross to Earth, so a live call cannot work: every sentence would arrive minutes late. Record a message instead. It is stored, sent when the link is up and answered the same way (store and forward, like deep-space networks).` : 'Nobody picked up. Leave a message: it is held and delivered, and you get the answer as a message too.'}</Txt>
+            <View style={{ marginTop: 16 }}><VoiceRecorder to={msgTo.to} onSent={() => setMsgTo(null)} /></View>
+            <View style={{ marginTop: 10 }}><Button kind="ghost" title="Close" onPress={() => setMsgTo(null)} /></View>
+          </View>
+        </View>
+      ) : null}
     </Ctx.Provider>
   );
 }

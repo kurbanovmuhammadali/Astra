@@ -10,19 +10,48 @@ import { getIce } from '@/data/ice';
 export type CallKind = 'doctor' | 'family' | 'crew';
 export type CallState = {
   phase: 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
-  callId?: string; kind?: CallKind; peerName?: string; incoming?: boolean; note?: string; muted: boolean; videoOn: boolean; seconds: number;
+  callId?: string; kind?: CallKind; peerName?: string; incoming?: boolean; note?: string; muted: boolean; videoOn: boolean; seconds: number; startedAt?: number;
 };
 const IDLE: CallState = { phase: 'idle', muted: false, videoOn: true, seconds: 0 };
 
-/** Plays a short repeating tone pattern (ringing / alarm) with the Web Audio API. Returns a stop function. */
-export function tone(kind: 'ring' | 'alarm'): () => void {
-  try {
-    const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext; const ctx = new Ctx();
-    const beep = (f: number, d: number, at: number, vol = 0.12) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; o.type = kind === 'alarm' ? 'square' : 'sine'; g.gain.value = vol; o.connect(g); g.connect(ctx.destination); o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + d); };
-    const play = () => { if (kind === 'ring') { beep(440, 0.4, 0); beep(480, 0.4, 0); } else { beep(880, 0.25, 0, 0.18); beep(660, 0.25, 0.3, 0.18); } };
-    play(); const id = setInterval(play, kind === 'ring' ? 2200 : 800);
-    return () => { clearInterval(id); ctx.close().catch(() => {}); };
-  } catch { return () => {}; }
+let actx: any = null;
+const audioCtx = () => { try { const C = (window as any).AudioContext || (window as any).webkitAudioContext; if (!actx) actx = new C(); if (actx.state === 'suspended') actx.resume?.(); return actx; } catch { return null; } };
+/** Browsers only allow sound after a tap: unlock the audio engine on the first touch so an incoming call can ring. */
+export function unlockAudio() {
+  if (typeof document === 'undefined') return;
+  const go = () => { audioCtx(); document.removeEventListener('pointerdown', go); document.removeEventListener('keydown', go); };
+  document.addEventListener('pointerdown', go); document.addEventListener('keydown', go);
+}
+
+/**
+ * Call sounds with the Web Audio API.  'ring'    = the phone ringing for the person being called (a melodic ringtone, vibrates, flashes the tab title),
+ *                                      'ringback' = what the caller hears while the other phone rings (440 + 480 Hz, 2 s on / 4 s off),
+ *                                      'alarm'    = emergency. Returns a stop function.
+ */
+export function tone(kind: 'ring' | 'ringback' | 'alarm', who?: string): () => void {
+  const ctx = audioCtx();
+  const timers: any[] = [];
+  const note = (f: number, d: number, at: number, vol: number, type: OscillatorType = 'sine') => {
+    if (!ctx) return;
+    const t0 = ctx.currentTime + at, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02); g.gain.setValueAtTime(vol, t0 + Math.max(0.03, d - 0.06)); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+    o.start(t0); o.stop(t0 + d + 0.02);
+  };
+  const play = () => {
+    if (kind === 'ring') { [659, 784, 659, 523].forEach((f, i) => note(f, 0.28, i * 0.3, 0.34, 'triangle')); [659, 784, 659, 523].forEach((f, i) => note(f, 0.28, 1.35 + i * 0.3, 0.34, 'triangle')); }
+    else if (kind === 'ringback') { note(440, 2, 0, 0.2); note(480, 2, 0, 0.2); }
+    else { note(880, 0.25, 0, 0.3, 'square'); note(660, 0.25, 0.3, 0.3, 'square'); }
+  };
+  const every = kind === 'ring' ? 3200 : kind === 'ringback' ? 6000 : 800;
+  play(); timers.push(setInterval(play, every));
+  let blink: any = null, title = '';
+  if (kind === 'ring') {
+    try { navigator.vibrate?.([700, 300, 700, 1500]); timers.push(setInterval(() => navigator.vibrate?.([700, 300, 700, 1500]), 3200)); } catch { /* no vibration */ }
+    try { title = document.title; let on = false; blink = setInterval(() => { on = !on; document.title = on ? `📞 Incoming call${who ? ' · ' + who : ''}` : title; }, 900); } catch { /* ignore */ }
+    try { if ((window as any).Notification?.permission === 'granted' && document.hidden) new (window as any).Notification('Incoming call', { body: who ?? 'Celeste', requireInteraction: true, tag: 'celeste-call' }); } catch { /* ignore */ }
+  }
+  return () => { timers.forEach(clearInterval); if (blink) { clearInterval(blink); try { document.title = title; } catch { /* ignore */ } } try { navigator.vibrate?.(0); } catch { /* ignore */ } };
 }
 
 /** `query` is the socket query ("role=inbox" or "role=family&token=…"); null = stay disconnected. onEvent receives every non-call server message. */
@@ -72,7 +101,7 @@ export function useCalls(query: string | null, onEvent?: (m: any) => void) {
         const c = cur.current;
         if (m.type === 'incoming') {
           if (c.phase !== 'idle' && c.phase !== 'ended') { send({ type: 'decline', callId: m.callId }); return; } // already in a call
-          set({ phase: 'ringing', incoming: true, callId: m.callId, kind: m.kind, peerName: m.fromName, note: undefined, seconds: 0, muted: false, videoOn: true }); stopRing(); ring.current = tone('ring');
+          set({ phase: 'ringing', incoming: true, callId: m.callId, kind: m.kind, peerName: m.fromName, note: undefined, seconds: 0, muted: false, videoOn: true }); stopRing(); ring.current = tone('ring', m.fromName);
         } else if (m.type === 'calling') set({ callId: m.callId });
         else if (m.type === 'accepted' && m.callId === c.callId) { // the other side picked up: we are the caller, so we make the offer
           set({ phase: 'connecting', peerName: m.byName ?? c.peerName }); stopRing();
@@ -104,7 +133,7 @@ export function useCalls(query: string | null, onEvent?: (m: any) => void) {
     if (cur.current.phase !== 'idle' && cur.current.phase !== 'ended') return;
     if (!navigator.mediaDevices?.getUserMedia) { set({ ...IDLE, phase: 'ended', note: 'Calls need a secure page (https) with a microphone.' }); return; }
     try { await getMedia(true); } catch { set({ ...IDLE, phase: 'ended', note: 'Microphone permission is needed to call.' }); return; }
-    set({ ...IDLE, phase: 'calling', incoming: false, kind, peerName: name }); ring.current = tone('ring');
+    set({ ...IDLE, phase: 'calling', incoming: false, kind, peerName: name, startedAt: Date.now() }); ring.current = tone('ringback');
     send({ type: 'call', to, kind });
   }, []);
   const accept = useCallback(async () => {

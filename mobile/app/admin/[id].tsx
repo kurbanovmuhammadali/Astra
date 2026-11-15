@@ -10,6 +10,7 @@ import type { Incident } from '@/live/Live';
 import { LineChart, Progress, Spark } from '@/kit/charts';
 import { Page } from '@/kit/page';
 import { Field } from '@/kit/fields';
+import { DoctorBrain } from '@/kit/DoctorBrain';
 import { api, API_URL } from '@/api';
 import { useApi } from '@/useApi';
 import { DAYS } from '@/data/override';
@@ -122,6 +123,7 @@ export default function CrewDetail() {
       <View style={{ marginTop: 12 }}><Segmented value={tab} onChange={setTab} options={[{ key: 'overview', label: 'Overview' }, { key: 'live', label: 'Live' }, { key: 'plan', label: 'Plan' }, { key: 'file', label: 'File' }]} /></View>
 
       {tab === 'overview' ? <>
+      <DoctorBrain uid={u.id} name={u.name} />
       {data.alerts.length ? <View style={{ gap: 8, marginTop: 14 }}>{data.alerts.map((a, i) => <Notice key={i} tone={a.level === 'red' ? 'flag' : 'watch'} title={a.title} body={a.body} />)}</View> : null}
       <Card style={{ marginTop: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Kicker>Trends · last 14 days</Kicker><View style={{ flexDirection: 'row', gap: 6 }}>{(['sleep', 'hrv', 'rhr', 'recovery'] as const).filter(k => data.metrics[k]).map(k => <Chip key={k} label={data.metrics[k].label} on={chart === k} onPress={() => setChart(k)} />)}</View></View>

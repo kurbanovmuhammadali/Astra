@@ -1,6 +1,9 @@
 import express from 'express';
+import compression from 'compression';
 import { isDoctorEmail } from './roles.js';
 import { aiSnapshot, freshenWhoop } from './aidata.js';
+import { mountVoicemail } from './voicemail.js';
+import { mountBrain, startBrain, datasetFor, extractProposals, storeProposals } from './brain.js';
 import { mountDemo, demoOn } from './demo-accounts.js';
 import { ttsOn, speakWav, speakable } from './tts.js';
 import { existsSync, readFileSync } from 'node:fs';
@@ -36,6 +39,7 @@ const MIN_AGE = 18;
 export const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
+app.use(compression()); // gzip the web app and the API: the first load is several times smaller
 app.use('/api/assistant', express.json({ limit: '7mb' })); // attachments (a PDF or photo the person chose to send)
 app.use(express.json({ limit: '1mb' }));
 
@@ -158,6 +162,7 @@ app.post('/api/auth/code/verify', (req, res) => {
   if (purpose === 'doctor') { // flight surgeon sign-in: allow-listed emails only; first time creates the surgeon account
     const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!isDoctorEmail(email, existing?.role)) return bad(res, 'This email is not registered as a doctor.', 403);
+    if (existing && existing.role === 'astronaut') db.prepare("UPDATE users SET role = 'surgeon' WHERE id = ?").run(existing.id); // an allow-listed email signing in as a doctor becomes a doctor
     if (!existing) {
       const dn = String(req.body?.profile?.name || '').trim();
       if (dn.length < 2) return bad(res, 'Please enter your name.');
@@ -390,7 +395,10 @@ app.post('/api/assistant', requireAuth, async (req, res) => {
   if (!companionGate(req, res)) return;
   try {
     await freshenWhoop(req.user.id); // active data flow: pull WHOOP first when the last sync is older than 10 minutes
-    res.json(await assistantReply({ ...(req.body ?? {}), background: aiSummary(req.user.id), measured: aiSnapshot(req.user.id), profileFiles: aiFiles(req.user.id) }));
+    const r = await assistantReply({ ...(req.body ?? {}), background: aiSummary(req.user.id), measured: { ...aiSnapshot(req.user.id), dataset: datasetFor(req.user.id) }, profileFiles: aiFiles(req.user.id) });
+    const asked = /day off|rest day|take a rest|skip (today|training)|lighter|schedule|plan my|выходн|отдых|\bрасписан/i.test(String((req.body?.messages ?? []).slice(-1)[0]?.text ?? ''));
+    const { text, list } = extractProposals(r.reply);
+    res.json({ ...r, reply: text || r.reply, proposals: r.escalate ? [] : storeProposals(req.user.id, list, { userAsked: asked }) });
   } catch (e) { companionFail(res, e); }
 });
 // natural voice for the SI (Gemini text-to-speech); the app falls back to the browser's own voices when this is unavailable
@@ -409,6 +417,8 @@ mountBackground(app);
 mountCam(app, PORT);
 mountTeam(app);
 mountFace(app, authResponse);
+mountBrain(app);
+mountVoicemail(app);
 mountDemo(app, authResponse);
 
 // ------------------------------------------------------------------ integrations
@@ -452,7 +462,11 @@ app.use('/api', (_req, res) => bad(res, 'Not found.', 404));
 // ------------------------------------------------------------------ web app (Expo web export)
 const pub = resolve(here, '../public');
 if (existsSync(pub)) {
-  app.use(express.static(pub, { index: false, maxAge: PROD ? '1h' : 0 }));
+  app.use(express.static(pub, { index: false, maxAge: PROD ? '1h' : 0, setHeaders: (res, file) => {
+    if (!PROD) return;
+    if (/[\\/]_expo[\\/]static[\\/]/.test(file) || /\.[0-9a-f]{20,}\.[a-z0-9]+$/.test(file)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // content-hashed: never changes
+    else if (/[\\/](models|vendor)[\\/]/.test(file)) res.setHeader('Cache-Control', 'public, max-age=604800'); // AI models: a week
+  } }));
   app.get('/{*splat}', (_req, res) => res.sendFile(resolve(pub, 'index.html')));
 }
 
@@ -464,6 +478,7 @@ app.use((err, _req, res, _next) => {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   startWhoopAutoSync();
+  startBrain();
   attachRtc(app.listen(PORT, () => console.log(`Celeste API on http://localhost:${PORT}  (WHOOP ${whoopConfigured() ? 'configured' : 'not configured'})`)));
   // Local https (self-signed, see scripts/make-cert.sh): phones only allow the camera on https pages.
   const HTTPS_PORT = Number(process.env.HTTPS_PORT || 4443), key = resolve(here, '../certs/key.pem'), cert = resolve(here, '../certs/cert.pem');

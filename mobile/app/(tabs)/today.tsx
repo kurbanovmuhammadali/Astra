@@ -12,6 +12,8 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { TrendingDown, TrendingUp, ArrowRight, ChevronRight, Flame, Footprints, HeartPulse, Moon, NotebookPen, Play, Radiation, Activity, ShieldCheck, Sparkles, ClipboardCheck } from 'lucide-react-native';
 import { useAuth } from '@/auth';
 import { AstraLogo, Floaty, SPACE } from '@/astra';
+import { SiCheck } from '@/kit/SiCheck';
+import { VoiceInbox } from '@/kit/VoiceInbox';
 import Planet from '@/Planet';
 import { ELEV, K, RAD, native, toneColor, toneTint } from '@/kit/tokens';
 import { Appear, Count, Kicker, Pressy, Swap, Txt, useInView, useLayout, useLoop, useTween, useFocusTick } from '@/kit/core';
@@ -439,11 +441,11 @@ export default function Home() {
       {wide ? (
         // laptop: hazards + numbers on the left, the mission route and today's routine on the right
         <Cols ratio={[1.15, 1]} gap={32}>
-          <View>{hazards}<Appear>{stats}</Appear><Appear>{move}</Appear></View>
+          <View>{hazards}<Appear>{stats}</Appear><SiCheck /><VoiceInbox title="Messages with your doctors" recordTo="doctors" /><Appear>{move}</Appear></View>
           <View style={{ marginTop: 16 }}>{track}<Appear>{focus}</Appear></View>
         </Cols>
       ) : (
-        <View>{hazards}{track}<Appear>{stats}</Appear><Appear>{move}</Appear><Appear>{focus}</Appear></View>
+        <View>{hazards}{track}<Appear>{stats}</Appear><SiCheck /><VoiceInbox title="Messages with your doctors" recordTo="doctors" /><Appear>{move}</Appear><Appear>{focus}</Appear></View>
       )}
       <ReadingSheet r={sheet} onClose={() => setSheet(null)} />
     </Page>

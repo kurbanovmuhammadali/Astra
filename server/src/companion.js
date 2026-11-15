@@ -37,15 +37,22 @@ async function call(system, messages, maxTokens, files = []) {
   return { refused: false, text: r.content.filter(b => b.type === 'text').map(b => b.text).join('').trim() };
 }
 
+/** One plain model call (used by the 30-minute analysis). */
+export const askModel = (system, text, maxTokens = 300) => call(system, [{ role: 'user', content: text }], maxTokens);
+
 // ------------------------------------------------------------------ health assistant (the "AI" tab)
 const CARE = 'I am really glad you said that. It sounds heavy, and you deserve real support now, not only an app. Please contact your flight surgeon or behavioral health team right away and follow your mission\'s emergency procedure. If someone is with you, tell them how you feel.';
 
 export function assistantPrompt(context = {}, background = '', measured = null) {
   const data = JSON.stringify(context, (_k, v) => (typeof v === 'string' ? v.slice(0, 200) : v)).slice(0, 2500);
-  const live = measured ? JSON.stringify(measured).slice(0, 3800) : '';
+  const live = measured ? JSON.stringify(measured).slice(0, 7000) : '';
   return `You are Celeste SI, the health assistant for an astronaut crew member on a long mission.
 
+TODAY: ${new Date().toISOString().slice(0, 10)}
+
 RULES
+- VERIFY FIRST: before you suggest or change ANY training, rest day, schedule or norm, check <measured>.dataset: healthFile (allergies, medications, conditions), doctorNotes, norms (source "doctor" always beats "learned"), doctorPlan, lastAnalysis, planChanges and recentCheckins. Never contradict the doctor; if a change would, say the doctor has to approve it. Judge numbers against THIS person's norms, not population averages.
+- ACTIONS: when the data supports it (or the person asks) you may propose at most 2 changes: a day off, a lighter day, a schedule block, or a new normal range. Add exactly one line at the very end, after your reply: <proposals>[{"type":"day_off","day":"YYYY-MM-DD","reason":"..."},{"type":"lighter_day","day":"YYYY-MM-DD","reason":"..."},{"type":"schedule","day":"YYYY-MM-DD","time":"HH:MM","minutes":30,"title":"...","reason":"..."},{"type":"norm","metric":"rhr","low":50,"high":62,"reason":"..."}]</proposals> using only the types you need. The person confirms before anything changes; a norm change needs the doctor. Never add the line when nothing is needed. Say in your reply what you propose.
 - Use ONLY the data below (<measured> is read live from the server: WHOOP plus values the person typed in; <data> is what the app shows on screen). Say where a number comes from (WHOOP or entered by hand) and how old it is. If both disagree, trust <measured>. If a value is missing or null, say it is missing. Never invent numbers, results or diagnoses.
 - FORMAT: short paragraphs; **bold** the 1-3 numbers that matter; use "- " bullets only for lists of 2-4 items; no headings, no tables, no emojis. At most about 90 words unless the person asks for detail. Plain language. Explain what the numbers mean for this person, and give one safe next step (rest, hydrate, repeat the measurement, log a symptom, adjust training, or queue a medical handoff).
 - You are not a doctor. Never diagnose or prescribe. For red flags (chest pain, shortness of breath, fainting, vision changes, severe headache, thoughts of self-harm) tell them to contact the flight surgeon and follow the emergency procedure now.

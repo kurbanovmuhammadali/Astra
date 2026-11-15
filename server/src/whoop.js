@@ -3,6 +3,7 @@
  * Docs: https://developer.whoop.com/api/  ·  Scopes: https://developer.whoop.com/docs/developing/oauth/
  */
 import { db } from './db.js';
+import { validValue } from './brain.js';
 import { encrypt, decrypt, token } from './auth.js';
 import { toSql, parseTs } from './health/engine.js';
 
@@ -96,8 +97,8 @@ export async function syncWhoop(userId, days = 30) {
     ON CONFLICT(user_id, metric, source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET value = excluded.value, recorded_at = excluded.recorded_at`);
   const at = s => toSql(parseTs(s));
   let count = 0;
-  const stat = { recoveries: 0, recoveriesScored: 0, calibrating: 0, sleeps: 0, sleepsScored: 0, cycles: 0 };
-  const put = (metric, v, unit, ext, when) => { if (v != null) { up.run(userId, metric, v, null, unit, ext, at(when)); count++; } };
+  const stat = { recoveries: 0, recoveriesScored: 0, calibrating: 0, invalid: 0, sleeps: 0, sleepsScored: 0, cycles: 0 };
+  const put = (metric, v, unit, ext, when) => { if (v != null && !validValue(metric, v)) { stat.invalid++; return; } /* a 0 from the strap is a sensor gap, not a reading */ if (v != null) { up.run(userId, metric, v, null, unit, ext, at(when)); count++; } };
 
   const [recoveries, sleeps, cycles] = await Promise.all([
     getAll(userId, '/recovery', start), getAll(userId, '/activity/sleep', start), getAll(userId, '/cycle', start),
@@ -143,11 +144,21 @@ export async function disconnectWhoop(userId) {
 
 let autoTimer = null;
 /** Keeps every connected member's data fresh without them pressing Sync (WHOOP has no live stream; webhooks are not used). */
-export function startWhoopAutoSync(everyMs = 20 * 60e3) {
+export function startWhoopAutoSync(everyMs = 10 * 60e3) {
   if (autoTimer || !whoopConfigured()) return;
+  const retries = new Map(); // userId -> how many quick re-tries after an empty / zero reading
+  const one = async userId => {
+    try {
+      const r = await syncWhoop(userId, 3);
+      if ((r.imported === 0 || r.invalid > 0) && (retries.get(userId) ?? 0) < 3) { // WHOOP showed nothing or zeros: run the sync again in 2 minutes
+        retries.set(userId, (retries.get(userId) ?? 0) + 1);
+        setTimeout(() => one(userId), 2 * 60e3).unref?.();
+      } else retries.delete(userId);
+    } catch (e) { console.error('[whoop] auto-sync failed for user', userId, String(e.message).slice(0, 80)); }
+  };
   const run = async () => {
     for (const r of db.prepare(`SELECT user_id FROM integrations WHERE provider = 'whoop' AND status = 'connected'`).all()) {
-      try { await syncWhoop(r.user_id, 3); } catch (e) { console.error('[whoop] auto-sync failed for user', r.user_id, String(e.message).slice(0, 80)); }
+      await one(r.user_id);
       await new Promise(ok => setTimeout(ok, 1500)); // stay far below the 100 requests/minute limit
     }
   };

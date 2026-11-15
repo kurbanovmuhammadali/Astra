@@ -9,6 +9,7 @@
 import { db } from './db.js';
 import { LEGAL_VERSION, requireAuth } from './auth.js';
 import { seedDemo } from './demo-data.js';
+import { learnNorms, analyzeUser } from './brain.js';
 
 export const demoOn = () => process.env.DEMO_ACCOUNTS !== 'off';
 export const isDemoEmail = e => /@demo\.celeste$/i.test(String(e));
@@ -82,6 +83,11 @@ export function seedDemoAccounts() {
     rep(alex, 'demo-r1', 'Headache with blurred vision', 'Possible SANS / sleep debt', [{ h: 'Symptoms', t: 'Headache since morning, mild blurred vision when reading small text.' }, { h: 'Data', t: 'Sleep 5.1 h, HRV down 14% vs baseline, CO2 2.6 mmHg.' }, { h: 'Allergies', t: 'Penicillin, shellfish.' }], 3 * H, null);
     rep(alex, 'demo-r2', 'Short sleep this week', 'Routine report', [{ h: 'Sleep', t: 'Averaging 5.8 h over 5 days.' }, { h: 'Plan', t: 'Moving hard sessions earlier in the day.' }], 30 * H, { by: docs[0], after: 25 * MIN, note: 'Thanks Alex. Keep lights low after 21:00 and try 7 h tonight. Report again if the headache lasts more than a day.' });
     rep(crewRows[1], 'demo-r3', 'Knee pain after treadmill', 'Pain 4/10 right knee', [{ h: 'Symptom', t: 'Right knee, worse on stairs, started after T2 run.' }], 20 * H, { by: docs[1], after: 2 * H, note: 'Swap the T2 run for CEVIS for 3 days and ice the knee. Tell me if it swells.' });
+    // what the doctor told the SI about Alex, and a normal range only a doctor can set
+    db.prepare('INSERT INTO doctor_notes (user_id, by_user, text) VALUES (?,?,?)').run(alex.id, docs[0].id, 'Athlete: resting heart rate runs low (50-60 is normal for Alex). Headaches follow nights under 6 h; prefer a lighter day over pushing through. No ibuprofen on empty stomach.');
+    db.prepare('INSERT INTO doctor_norms (user_id, metric, low, high, note, by_user) VALUES (?,?,?,?,?,?)').run(alex.id, 'rhr', 48, 64, 'Trained athlete', docs[0].id);
+    crewRows.forEach(r => learnNorms(Number(r.id)));
+    analyzeUser(Number(alex.id)).catch(() => {});
     rep(crewRows[2], 'demo-r4', 'Isolation fatigue', 'Low mood, flat energy', [{ h: 'Wellbeing', t: 'Mood 40/100 for four days, sleep fine.' }], 6 * H, null);
   })();
   console.log('[demo] demo accounts ready (astronaut, 2 doctors, team leader)');
