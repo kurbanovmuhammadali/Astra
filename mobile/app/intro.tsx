@@ -105,6 +105,11 @@ export default function Intro() {
         <VideoView player={player} style={{ width: W, height: H }} contentFit="cover" nativeControls={false} allowsPictureInPicture={false} {...({ fullscreenOptions: { enable: false } } as any)} />
       </Animated.View>
 
+      {/* SI disclosure: the film and its pictures were made with Claude. Barely visible on purpose, but present on every frame. */}
+      <View pointerEvents="none" accessible accessibilityLabel="Made with Claude, SI-assisted" style={{ position: 'absolute', left: 14, bottom: insets.bottom + 10 }}>
+        <Txt v="mono" color="#FFFFFF" style={{ fontSize: 8.5, letterSpacing: 1.4, opacity: 0.26, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 0.5 }, textShadowRadius: 2 }}>MADE WITH CLAUDE · SI-ASSISTED</Txt>
+      </View>
+
       {/* the Welcome screen's composition, dissolving in over the film's last second */}
       <Animated.View pointerEvents="none" style={{ position: 'absolute', width: W, height: H, opacity: out }}>
         <View style={{ position: 'absolute', width: W, height: H, backgroundColor: A.sand }} />
