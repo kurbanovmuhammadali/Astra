@@ -1,11 +1,11 @@
 process.env.DB_FILE = ':memory:';
-process.env.DEMO_LOGIN = 'on';
 process.env.CAMERA_STATION = 'on';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 const { app } = await import('../src/index.js');
 const { attachRtc } = await import('../src/rtc.js');
+const { loginAs } = await import('./support/people.js');
 
 const srv = app.listen(0); attachRtc(srv);
 const port = srv.address().port, base = `http://localhost:${port}`;
@@ -23,8 +23,8 @@ const open = (q, cookie) => new Promise(res => {
 const wait = async (ws, type) => { for (let i = 0; i < 60; i++) { const m = ws.msgs.find(x => x.type === type); if (m) return m; await new Promise(r => setTimeout(r, 25)); } throw new Error('no ' + type); };
 let me;
 test('setup', async () => {
-  me = (await crew.call('POST', '/api/demo/login', { as: 'crew' })).body.user;
-  await admin.call('POST', '/api/demo/login', { as: 'admin' });
+  me = (await loginAs((...a) => crew.call(...a), 'crew')).body.user;
+  await loginAs((...a) => admin.call(...a), 'admin');
 });
 test('unauthorised connections are refused', async () => {
   assert.equal((await open(`role=view&user=${me.id}`)).ok, false);                       // no session

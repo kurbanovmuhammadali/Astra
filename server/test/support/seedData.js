@@ -1,5 +1,5 @@
-import { db, tx } from './db.js';
-import { toSql } from './health/engine.js';
+import { db, tx } from '../../src/db.js';
+import { toSql } from '../../src/health/engine.js';
 
 /** Deterministic PRNG so every demo account tells the same story. */
 function rng(seed) {

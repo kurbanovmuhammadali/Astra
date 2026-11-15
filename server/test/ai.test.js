@@ -1,10 +1,10 @@
 process.env.DB_FILE = ':memory:';
-process.env.DEMO_LOGIN = 'on';
 delete process.env.GEMINI_API_KEY; delete process.env.ANTHROPIC_API_KEY;
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const { app } = await import('../src/index.js');
 const { geminiBody } = await import('../src/llm.js');
+const { loginAs } = await import('./support/people.js');
 
 const srv = app.listen(0);
 const base = `http://localhost:${srv.address().port}`;
@@ -20,7 +20,7 @@ test('Gemini request body: roles, system prompt, image on the last user turn, JS
   assert.ok(b.generationConfig.maxOutputTokens >= 1500);
 });
 test('assistant says "not configured" instead of failing when no key is set', async () => {
-  await call('/api/demo/login', { as: 'crew' });
+  await loginAs((m, p, b) => call(p, b), 'crew');
   assert.equal((await call('/api/assistant', { messages: [{ role: 'user', text: 'hi' }] })).status, 503);
 });
 test.after(() => srv.close());

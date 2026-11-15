@@ -1,11 +1,11 @@
 process.env.DB_FILE = ':memory:';
-process.env.DEMO_LOGIN = 'on';
 process.env.CAMERA_STATION = 'on';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 const { app } = await import('../src/index.js');
 const { attachRtc } = await import('../src/rtc.js');
+const { loginAs } = await import('./support/people.js');
 const srv = app.listen(0); attachRtc(srv);
 const port = srv.address().port, base = `http://localhost:${port}`;
 const jar = () => { let cookie = ''; const f = async (method, path, body) => {
@@ -23,7 +23,7 @@ test('setup: three astronauts and a surgeon', async () => {
   adaId = (await ada('POST', '/api/auth/register', reg('Ada Orbit', 'ada@t.test'))).body.user.id;
   benId = (await ben('POST', '/api/auth/register', reg('Ben Lunar', 'ben@t.test'))).body.user.id;
   cyId = (await cy('POST', '/api/auth/register', reg('Cy Mars', 'cy@t.test'))).body.user.id;
-  await doc('POST', '/api/demo/login', { as: 'admin' }); await stranger('POST', '/api/auth/register', reg('Zed Stranger', 'zed@t.test'));
+  await loginAs(doc, 'admin'); await stranger('POST', '/api/auth/register', reg('Zed Stranger', 'zed@t.test'));
 });
 test('create / join a crew; wrong code; one crew per person', async () => {
   const c = await ada('POST', '/api/crew', { name: 'Odyssey' }); assert.equal(c.status, 200); code = c.body.crew.code; assert.match(code, /^[A-Z0-9]{3}-[A-Z0-9]{3}$/); assert.equal(c.body.crew.role, 'commander');

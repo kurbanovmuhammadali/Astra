@@ -1,9 +1,9 @@
 process.env.DB_FILE = ':memory:';
-process.env.DEMO_LOGIN = 'on';
 process.env.CAMERA_STATION = 'on';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const { app } = await import('../src/index.js');
+const { loginAs } = await import('./support/people.js');
 
 const srv = app.listen(0);
 const base = `http://localhost:${srv.address().port}`;
@@ -18,8 +18,8 @@ const dataUrl = b => `data:image/jpeg;base64,${b.toString('base64')}`;
 let me, token;
 
 test('setup: demo crew and surgeon sign in; the astronaut creates the secret link', async () => {
-  me = (await crew('POST', '/api/demo/login', { as: 'crew' })).body.user;
-  await admin('POST', '/api/demo/login', { as: 'admin' });
+  me = (await loginAs(crew, 'crew')).body.user;
+  await loginAs(admin, 'admin');
   const r = await crew('POST', '/api/me/cam-link', {});
   assert.equal(r.status, 200); token = r.body.token; assert.ok(token.length >= 30);
   assert.equal((await crew('POST', '/api/me/cam-link', {})).body.token, token); // stable until rotated

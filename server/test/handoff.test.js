@@ -1,8 +1,8 @@
 process.env.DB_FILE = ':memory:';
-process.env.DEMO_LOGIN = 'on';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const { app } = await import('../src/index.js');
+const { loginAs } = await import('./support/people.js');
 const srv = app.listen(0); const base = `http://localhost:${srv.address().port}`;
 const jar = () => { let cookie = ''; return async (method, path, body) => {
   const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'perigee', cookie }, body: body ? JSON.stringify(body) : undefined });
@@ -13,7 +13,7 @@ const crew = jar(), admin = jar();
 const report = { title: 'New symptom', reason: 'New symptom', missionDay: 12, queuedAt: Date.now(), lines: [{ h: 'Symptoms', t: 'Headache' }] };
 let me;
 test('a queued report reaches the surgeon, who acknowledges it; the astronaut sees the reply', async () => {
-  me = (await crew('POST', '/api/demo/login', { as: 'crew' })).body.user; await admin('POST', '/api/demo/login', { as: 'admin' });
+  me = (await loginAs(crew, 'crew')).body.user; await loginAs(admin, 'admin');
   assert.equal((await crew('PUT', '/api/me/handoffs/abc12345', report)).status, 200);
   assert.equal((await crew('PUT', '/api/me/handoffs/abc12345', report)).status, 200); // idempotent re-send
   assert.equal((await crew('PUT', '/api/me/handoffs/abc12346', { ...report, synthetic: true })).status, 422);

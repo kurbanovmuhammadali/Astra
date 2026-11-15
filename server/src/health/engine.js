@@ -84,6 +84,7 @@ export function systemsFor(userId, snaps, checkin) {
 }
 
 export function readiness(snaps, systems) {
+  if (snaps.recovery?.value == null && snaps.sleep?.value == null) return 0; // no WHOOP and nothing typed in: no score, never an invented one
   const pts = { green: 100, amber: 62, red: 25 };
   const rec = snaps.recovery?.value ?? 60;
   const sleep = Math.min(100, ((snaps.sleep?.value ?? 7) / 8) * 100);

@@ -24,6 +24,7 @@ test('consent required', async () => {
 test('register → dashboard → plan → checkin → logout/login → delete', async () => {
   let r = await call('POST', '/api/auth/register', reg);
   assert.equal(r.status, 200, JSON.stringify(r.body)); assert.ok(cookie.startsWith('pg_session='));
+  const { seedDemo } = await import('./support/seedData.js'); seedDemo(r.body.user.id); // new accounts start empty; this test needs synthetic readings
   r = await call('GET', '/api/dashboard'); assert.equal(r.status, 200);
   assert.ok(r.body.readiness > 0 && r.body.readiness <= 100);
   console.log('readiness', r.body.readiness, r.body.systems.map(s => `${s.key}:${s.status}`).join(' '));
@@ -76,11 +77,3 @@ test('email code: signup → login', async () => {
   r = await call('GET', '/api/auth/me'); assert.equal(r.status, 200);
 });
 
-test('demo crew account can log in with a code', async () => {
-  cookie = '';
-  let r = await call('POST', '/api/auth/code', { email: 'crew@astra.demo', purpose: 'login' });
-  assert.equal(r.status, 200);
-  r = await call('POST', '/api/auth/code/verify', { email: 'crew@astra.demo', purpose: 'login', code: r.body.devCode });
-  assert.equal(r.status, 200); assert.equal(r.body.user.name, 'Alex Morgan');
-  r = await call('GET', '/api/dashboard'); assert.equal(r.status, 200);
-});

@@ -1,9 +1,9 @@
 process.env.DB_FILE = ':memory:';
-process.env.DEMO_LOGIN = 'on';
 process.env.EMAIL_VERIFICATION = 'auto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 const { app } = await import('../src/index.js');
+const { loginAs } = await import('./support/people.js');
 
 const srv = app.listen(0);
 const base = `http://localhost:${srv.address().port}`;
@@ -15,8 +15,8 @@ const jar = () => { let cookie = ''; return async (method, path, body, raw) => {
 const crew = jar(), admin = jar();
 
 test('demo sign-in works for crew and for the flight surgeon', async () => {
-  assert.equal((await crew('POST', '/api/demo/login', { as: 'crew' })).status, 200);
-  const a = await admin('POST', '/api/demo/login', { as: 'admin' });
+  assert.equal((await loginAs(crew, 'crew')).status, 200);
+  const a = await loginAs(admin, 'admin');
   assert.equal(a.status, 200); assert.equal(a.body.user.role, 'surgeon');
 });
 test('crew cannot open the admin console', async () => {

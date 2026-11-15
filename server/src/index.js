@@ -12,7 +12,6 @@ import {
 } from './auth.js';
 import { METRICS, SYSTEMS, SYMPTOMS } from './health/catalog.js';
 import { dashboard, series, metricSnapshot, adaptivePlan, missionPlan, today, toSql, baselineOf, evaluate } from './health/engine.js';
-import { seedDemo, clearDemo } from './demo.js';
 import { whoopConfigured, authorizeUrl, consumeState, exchangeCode, syncWhoop, disconnectWhoop, startWhoopAutoSync } from './whoop.js';
 import { companionConfigured, assistantReply } from './companion.js';
 import { mailConfigured, sendMail, codeEmail } from './mail.js';
@@ -22,7 +21,6 @@ import { mountTeam } from './team.js';
 import { mountFace } from './face.js';
 import { attachRtc } from './rtc.js';
 import { mountBackground, aiSummary } from './background.js';
-import { demoLoginOn, seedDemoPeople, demoUser } from './demo-login.js'; // DEMO-ONLY
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4000);
@@ -65,7 +63,7 @@ const authResponse = (req, res, user) => {
 };
 
 // ------------------------------------------------------------------ meta / legal
-app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', demoLogin: demoLoginOn(PROD), legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
 app.get('/api/catalog', (_req, res) => res.json({ metrics: METRICS, systems: SYSTEMS, symptoms: SYMPTOMS }));
 
 // ------------------------------------------------------------------ auth
@@ -89,7 +87,6 @@ app.post('/api/auth/register', (req, res) => {
     ['terms', 'privacy', 'health_data'].forEach(k => c.run(id, k, LEGAL_VERSION));
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   });
-  seedDemo(user.id); // every new crew member starts with a clearly-labelled demo dataset
   authResponse(req, res, user);
 });
 
@@ -101,25 +98,6 @@ app.post('/api/auth/login', (req, res) => {
   authResponse(req, res, user);
 });
 
-// ------------------------------------------------------------------ demo crew account (development only)
-// A ready-made crew member with sample data so the log-in flow can be tested without a real mailbox.
-export const DEMO_EMAIL = 'crew@astra.demo';
-if (!PROD && !db.prepare('SELECT 1 FROM users WHERE email = ?').get(DEMO_EMAIL)) {
-  const { lastInsertRowid: id } = db.prepare('INSERT INTO users (email, name, password_hash, dob, role, mission, environment, mission_years) VALUES (?,?,?,?,?,?,?,?)')
-    .run(DEMO_EMAIL, 'Alex Morgan', '!', '1988-01-01', 'astronaut', '2.5-year mission', 'mars', 2.5);
-  ['terms', 'privacy', 'health_data'].forEach(k => db.prepare('INSERT INTO consents (user_id, kind, version) VALUES (?,?,?)').run(id, k, LEGAL_VERSION));
-  seedDemo(Number(id));
-}
-
-// ==== DEMO-ONLY BEGIN: temporary one-click demo sign-in (see DEMO_REMOVAL.md). Needs DEMO_LOGIN=on and a non-production server. ====
-if (demoLoginOn(PROD)) seedDemoPeople();
-app.post('/api/demo/login', (req, res) => {
-  if (!demoLoginOn(PROD)) return bad(res, 'Demo sign-in is off.', 404);
-  const u = demoUser(req.body?.as === 'admin' ? 'admin' : 'crew');
-  if (!u) return bad(res, 'Demo user missing.', 500);
-  authResponse(req, res, u);
-});
-// ==== DEMO-ONLY END ====
 
 // ------------------------------------------------------------------ passwordless: email + 4-digit code
 // purpose 'signup' = new account from the onboarding flow, 'login' = crew account prepared by the mission.
@@ -131,9 +109,7 @@ app.post('/api/auth/code', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const purpose = req.body?.purpose === 'login' ? 'login' : 'signup';
   if (!EMAIL_RE.test(email)) return bad(res, 'Please enter a valid email.');
-  // the shared demo crew account is used by many judges at once → no per-email cap for it (per-IP limit still applies)
-  const demo = email.toLowerCase() === DEMO_EMAIL;
-  if (!rateLimit(`code:${req.ip}`, demo ? 30 : 10, 15 * 60e3) || (!demo && !rateLimit(`code:${email}`, 5, 15 * 60e3))) return bad(res, 'Too many codes requested. Wait a few minutes.', 429);
+  if (!rateLimit(`code:${req.ip}`, 10, 15 * 60e3) || !rateLimit(`code:${email}`, 5, 15 * 60e3)) return bad(res, 'Too many codes requested. Wait a few minutes.', 429);
   const exists = !!db.prepare('SELECT 1 FROM users WHERE email = ?').get(email);
   if (purpose === 'signup' && exists) return bad(res, 'This email already has an account. Use Log in instead.', 409);
   if (purpose === 'login' && !exists) return bad(res, 'We could not find a crew account for this email.', 404);
@@ -141,9 +117,9 @@ app.post('/api/auth/code', async (req, res) => {
   db.prepare('INSERT OR REPLACE INTO email_codes (email, purpose, code_hash, attempts, expires_at) VALUES (?,?,?,0,?)')
     .run(email, purpose, sha256(`${email}:${code}`), Date.now() + CODE_TTL);
   // Real email verification. EMAIL_VERIFICATION=on makes it mandatory (never falls back to showing the code);
-  // otherwise (auto) a configured mail provider is used, and only an unconfigured dev server shows the code for the demo.
-  const wantMail = process.env.EMAIL_VERIFICATION === 'on' || mailConfigured();
-  if (wantMail && !(email === DEMO_EMAIL && !PROD)) {
+  // otherwise (auto) a configured mail provider is used, and only an unconfigured local dev server shows the code.
+  const wantMail = PROD || process.env.EMAIL_VERIFICATION === 'on' || mailConfigured(); // production always verifies by real email
+  if (wantMail) {
     if (!mailConfigured()) {
       db.prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?').run(email, purpose);
       return bad(res, 'Email verification is on, but this server cannot send email yet. Add the mail settings to server/.env (see .env.example).', 503);
@@ -205,7 +181,6 @@ app.post('/api/auth/code/verify', (req, res) => {
     ['terms', 'privacy', 'health_data'].forEach(k => c.run(id, k, LEGAL_VERSION));
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   });
-  seedDemo(user.id);
   authResponse(req, res, user);
 });
 
@@ -407,7 +382,6 @@ app.get('/api/integrations', requireAuth, (req, res) => {
   res.json({
     providers: [
       { key: 'whoop', name: 'WHOOP', kind: 'Wearable', status: rows.whoop?.status ?? 'disconnected', lastSync: rows.whoop?.last_sync ?? null, available: whoopConfigured(), metrics: ['recovery', 'hrv', 'rhr', 'spo2', 'sleep', 'strain', 'weight'] },
-      { key: 'demo', name: 'Demo crew dataset', kind: 'Synthetic', status: rows.demo?.status ?? 'disconnected', lastSync: rows.demo?.last_sync ?? null, available: true, metrics: Object.keys(METRICS) },
       { key: 'nasa-lab', name: 'NASA lab results', kind: 'Clinical feed', status: 'ready', available: false, note: 'Uses POST /api/ingest when NASA data access is granted', metrics: ['ntx', 'vitd'] },
       { key: 'dosimeter', name: 'Station dosimeter', kind: 'Environment', status: 'ready', available: false, note: 'Uses POST /api/ingest', metrics: ['radiation', 'co2'] },
       { key: 'astroskin', name: 'Bio-Monitor / Astroskin', kind: 'Smart garment', status: 'planned', available: false, metrics: ['rhr', 'spo2', 'bp', 'temp'] },
@@ -416,7 +390,7 @@ app.get('/api/integrations', requireAuth, (req, res) => {
 });
 
 app.post('/api/integrations/whoop/start', requireAuth, (req, res) => {
-  if (!whoopConfigured()) return bad(res, 'WHOOP credentials are not configured on this server yet. Add WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET, or use the demo dataset.', 503);
+  if (!whoopConfigured()) return bad(res, 'WHOOP credentials are not configured on this server yet. Add WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET. Until then, enter your readings by hand.', 503);
   res.json({ url: authorizeUrl(req.user.id, req.body?.platform === 'native' ? 'native' : 'web') });
 });
 
@@ -436,8 +410,6 @@ app.post('/api/integrations/whoop/sync', requireAuth, async (req, res) => {
   try { res.json(await syncWhoop(req.user.id)); } catch (e) { bad(res, e.message, 502); }
 });
 app.delete('/api/integrations/whoop', requireAuth, async (req, res) => { await disconnectWhoop(req.user.id); res.json({ ok: true }); });
-app.post('/api/integrations/demo', requireAuth, (req, res) => { clearDemo(req.user.id); seedDemo(req.user.id); res.json({ ok: true }); });
-app.delete('/api/integrations/demo', requireAuth, (req, res) => { clearDemo(req.user.id); res.json({ ok: true }); });
 
 app.use('/api', (_req, res) => bad(res, 'Not found.', 404));
 
@@ -456,7 +428,7 @@ app.use((err, _req, res, _next) => {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   startWhoopAutoSync();
-  attachRtc(app.listen(PORT, () => console.log(`HMSC API on http://localhost:${PORT}  (WHOOP ${whoopConfigured() ? 'configured' : 'not configured — demo mode'})`)));
+  attachRtc(app.listen(PORT, () => console.log(`Celeste API on http://localhost:${PORT}  (WHOOP ${whoopConfigured() ? 'configured' : 'not configured'})`)));
   // Local https (self-signed, see scripts/make-cert.sh): phones only allow the camera on https pages.
   const HTTPS_PORT = Number(process.env.HTTPS_PORT || 4443), key = resolve(here, '../certs/key.pem'), cert = resolve(here, '../certs/cert.pem');
   if (existsSync(key) && existsSync(cert)) {
