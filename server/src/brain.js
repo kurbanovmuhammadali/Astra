@@ -325,3 +325,37 @@ export function applyProfile(actor, list, { userAsked = false } = {}) {
   }
   return { done, denied };
 }
+
+// ---- the SI's memory of the person: short facts it learned in earlier chats (private; the person can read and delete them) --------------
+db.exec('CREATE TABLE IF NOT EXISTS si_memory (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, fact TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime(\'now\')), updated_at TEXT NOT NULL DEFAULT (datetime(\'now\')))');
+export const memoryOf = userId => db.prepare('SELECT id, fact, updated_at AS at FROM si_memory WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT 40').all(userId);
+
+/** Applies what the model decided to remember or forget. Pure data handling, so it is testable without a model. */
+export function applyMemory(userId, change) {
+  const add = (Array.isArray(change?.add) ? change.add : []).map(f => str(f, 200)).filter(f => f.length >= 4).slice(0, 5);
+  const forget = (Array.isArray(change?.forget) ? change.forget : []).map(Number).filter(Number.isInteger);
+  for (const id of forget) db.prepare('DELETE FROM si_memory WHERE id = ? AND user_id = ?').run(id, userId);
+  const have = memoryOf(userId).map(m => m.fact.toLowerCase());
+  for (const f of add) if (!have.includes(f.toLowerCase())) { db.prepare('INSERT INTO si_memory (user_id, fact) VALUES (?,?)').run(userId, f); have.push(f.toLowerCase()); }
+  db.prepare('DELETE FROM si_memory WHERE user_id = ? AND id NOT IN (SELECT id FROM si_memory WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT 40)').run(userId, userId);
+  return memoryOf(userId);
+}
+
+/** After each exchange the model decides what (if anything) is worth remembering: preferences, routines, goals, how the person likes to be helped. */
+export async function rememberFrom(userId, userText, reply) {
+  if (!companionConfigured() || String(userText).trim().length < 8) return;
+  try {
+    const known = memoryOf(userId);
+    const out = await askModel('You keep a short private memory about ONE astronaut so a health assistant can be consistent across chats. Reply with JSON only: {"add":[...],"forget":[ids]}. Add at most 3 short facts (max 120 chars each) that stay true for weeks: preferences, routines, goals, fears, how they like advice, personal context they stated. Do NOT store single readings (those go to the health record), passwords, or anything the assistant guessed. Forget ids whose facts the person has now contradicted. If nothing is worth remembering reply {"add":[],"forget":[]}.',
+      `KNOWN FACTS\n${known.map(k => `${k.id}: ${k.fact}`).join('\n') || '(none)'}\n\nPERSON SAID\n${String(userText).slice(0, 600)}\n\nASSISTANT REPLIED\n${String(reply).slice(0, 400)}`, 200);
+    const m = /\{[\s\S]*\}/.exec(out.text || ''); if (!m) return;
+    applyMemory(userId, JSON.parse(m[0]));
+  } catch { /* memory is a bonus: never break a chat */ }
+}
+
+export function mountMemory(app) {
+  app.get('/api/me/si-memory', requireAuth, (req, res) => res.json({ facts: memoryOf(req.user.id) }));
+  app.post('/api/me/si-memory', requireAuth, (req, res) => { const f = str(req.body?.fact, 200); if (f.length < 4) return bad(res, 'Write a short fact.'); res.json({ facts: applyMemory(req.user.id, { add: [f] }) }); });
+  app.delete('/api/me/si-memory/:id', requireAuth, (req, res) => { db.prepare('DELETE FROM si_memory WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.user.id); res.json({ facts: memoryOf(req.user.id) }); });
+  app.delete('/api/me/si-memory', requireAuth, (req, res) => { db.prepare('DELETE FROM si_memory WHERE user_id = ?').run(req.user.id); res.json({ facts: [] }); });
+}

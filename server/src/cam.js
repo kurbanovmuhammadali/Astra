@@ -20,6 +20,7 @@ import { requireAdmin, isAdmin } from './roles.js';
 import { rtcState } from './rtc.js';
 import { raiseIncident, INCIDENT_KINDS, crewMateIds } from './team.js';
 import { identify } from './face.js';
+import { delayMinFor, liveCallOk } from './linkdelay.js';
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS cam_links (
@@ -69,6 +70,11 @@ export const mealEventsFor = (uid, days = 3) => db.prepare('SELECT day, slot, bi
   .all(uid, new Date(Date.now() - days * 864e5).toISOString().slice(0, 10));
 const lan = () => Object.values(networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address);
 
+db.exec(`CREATE TABLE IF NOT EXISTS cam_clips (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, seconds INTEGER NOT NULL, mime TEXT NOT NULL, data BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+/** How the camera reaches the doctor depends on distance: near Earth live video, far away short recorded clips (store and forward). */
+export const camLink = uid => { const u = db.prepare('SELECT environment, mission_goal FROM users WHERE id = ?').get(uid); const delayMin = delayMinFor(u); return { delayMin, mode: liveCallOk(u) ? 'live' : 'clips' }; };
+const CLIP_MIME = /^video\/(webm|mp4)(;.*)?$/i;
+
 export function mountCam(app, port) {
   const isCrew = id => !!db.prepare("SELECT 1 FROM users WHERE id = ? AND role IN ('astronaut','analog')").get(id);
   // The camera station (/camera): a phone or laptop that films crew members. It needs NO account: open the page, pick a name, film.
@@ -89,7 +95,7 @@ export function mountCam(app, port) {
     app.get(prefix + '/info', (req, res) => {
       const o = who(req);
       if (!o) return bad(res, notFound, 404);
-      res.json({ ok: true, name: String(o.name).split(' ')[0], viewing: viewing(o.id) && !!fresh(o.id) });
+      res.json({ ok: true, name: String(o.name).split(' ')[0], viewing: viewing(o.id) && !!fresh(o.id), ...camLink(o.id) });
     });
     app.post(prefix + '/frame', (req, res) => {
       const o = who(req);
@@ -103,6 +109,19 @@ export function mountCam(app, port) {
       const prev = frames.get(o.id);
       frames.set(o.id, { buf, at: Date.now(), viewedAt: prev?.viewedAt ?? 0 });
       res.json({ ok: true, viewing: viewing(o.id) });
+    });
+    // far from Earth: the camera records short clips and sends them; the doctor watches them when they arrive
+    app.post(prefix + '/clip', (req, res) => {
+      const o = who(req);
+      if (!o) return bad(res, notFound, 404);
+      if (!rateLimit(`camclip:${keyOf(req)}`, 160, 3600e3)) return bad(res, 'Too many clips.', 429);
+      const m = /^data:([^;]+(?:;[^;]*?)*?);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.media ?? ''));
+      if (!m || !CLIP_MIME.test(m[1])) return bad(res, 'Send a video clip.');
+      if (m[2].length > 4_200_000) return bad(res, 'That clip is too large.', 413);
+      const seconds = Math.max(1, Math.min(120, Math.round(Number(req.body?.seconds) || 1)));
+      db.prepare('INSERT INTO cam_clips (user_id, seconds, mime, data) VALUES (?,?,?,?)').run(o.id, seconds, m[1], Buffer.from(m[2], 'base64'));
+      db.prepare('DELETE FROM cam_clips WHERE user_id = ? AND id NOT IN (SELECT id FROM cam_clips WHERE user_id = ? ORDER BY id DESC LIMIT 24)').run(o.id, o.id);
+      res.json({ ok: true });
     });
     app.post(prefix + '/stop', (req, res) => {
       const o = who(req);
@@ -147,6 +166,7 @@ export function mountCam(app, port) {
       res.json({ ok: true, slot });
     });
   };
+  setInterval(() => db.prepare("DELETE FROM cam_clips WHERE created_at < datetime('now','-2 days')").run(), 3600e3).unref?.();
   mount('/api/cam/:token', req => owner(req.params.token), 'This camera link is not valid.', req => req.params.token);
   mount('/api/station/:id', req => {
     const id = Number(req.params.id);
@@ -180,7 +200,17 @@ export function mountCam(app, port) {
   app.get('/api/admin/crew/:id/cam', requireAdmin, (req, res) => {
     const id = crewId(req);
     if (!isCrew(id)) return bad(res, 'Crew member not found.', 404);
-    res.json({ ...status(id), token: tokenOf(id), lan: lan(), port });
+    res.json({ ...status(id), ...camLink(id), token: tokenOf(id), lan: lan(), port });
+  });
+  app.get('/api/admin/crew/:id/clips', requireAdmin, (req, res) => {
+    const id = crewId(req);
+    if (!isCrew(id)) return bad(res, 'Crew member not found.', 404);
+    res.json({ clips: db.prepare('SELECT id, seconds, created_at AS at FROM cam_clips WHERE user_id = ? ORDER BY id DESC LIMIT 24').all(id), ...camLink(id) });
+  });
+  app.get('/api/admin/crew/:id/clips/:cid', requireAdmin, (req, res) => {
+    const c = db.prepare('SELECT mime, data FROM cam_clips WHERE id = ? AND user_id = ?').get(Number(req.params.cid), crewId(req));
+    if (!c) return bad(res, 'Not found.', 404);
+    res.set({ 'Content-Type': c.mime, 'Cache-Control': 'no-store' }).send(Buffer.from(c.data));
   });
   app.post('/api/admin/crew/:id/cam-link', requireAdmin, (req, res) => {
     const id = crewId(req);

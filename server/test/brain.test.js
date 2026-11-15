@@ -154,3 +154,18 @@ test('doctor notes stay in force for the period the doctor chose, and always com
   const list = await doc('GET', `/api/admin/crew/${me}/brain`);
   assert.ok(list.body.notes.some(n => /overhead/.test(n.text) && n.active && n.validUntil));
 });
+
+test('SI memory: facts are kept per person, deduplicated, capped, private and deletable', async () => {
+  const mem = await crew('GET', '/api/me/si-memory'); assert.equal(mem.status, 200);
+  brain.applyMemory(me, { add: ['Prefers short answers, no bullet lists', 'Trains early in the morning', 'prefers short answers, no bullet lists', 'x'] });
+  let facts = brain.memoryOf(me); assert.equal(facts.length, 2); // duplicate and too-short ones dropped
+  assert.match(JSON.stringify(brain.datasetFor(me)), /./);
+  const { assistantPrompt } = await import('../src/companion.js');
+  assert.match(assistantPrompt({}, '', { memory: facts.map(f => f.fact) }), /Trains early in the morning/);
+  brain.applyMemory(me, { forget: [facts[0].id] }); assert.equal(brain.memoryOf(me).length, 1);
+  for (let i = 0; i < 50; i++) brain.applyMemory(me, { add: [`Fact number ${i} about the astronaut`] });
+  assert.equal(brain.memoryOf(me).length, 40); // capped
+  assert.equal((await crew('DELETE', `/api/me/si-memory/${brain.memoryOf(me)[0].id}`)).status, 200);
+  assert.equal((await doc('GET', '/api/me/si-memory')).body.facts.length, 0); // another account never sees it
+  assert.equal((await crew('DELETE', '/api/me/si-memory')).body.facts.length, 0);
+});

@@ -75,6 +75,7 @@ export default function Profile() {
       <ListGroup kicker="Settings">
         <ListRow icon={Cable} title="Connected data" sub={`WHOOP ${whoop ? 'connected' : 'not connected'} · Apple Watch ${watch ? 'connected' : 'off'}`} onPress={() => router.push('/profile/connected')} />
         <ListRow icon={Presentation} title="Drills & camera" sub="Emergency drill · camera station" onPress={() => router.push('/profile/presentation')} />
+        <ListRow icon={Cable} title="SI memory" sub="What the SI remembers about you" onPress={() => router.push('/profile/memory')} />
         <ListRow icon={UserCog} title="Account" sub="Privacy, flight surgeon, research, sign out" onPress={() => router.push('/profile/account')} />
       </ListGroup>
       {user.admin || user.role === 'surgeon' ? <ListGroup kicker="Flight surgeon"><ListRow icon={Stethoscope} title="Surgeon console" sub="Crew overview, alerts, concerns, plans" onPress={() => router.push('/admin')} /></ListGroup> : null}

@@ -3,7 +3,7 @@ import compression from 'compression';
 import { isDoctorEmail } from './roles.js';
 import { aiSnapshot, freshenWhoop } from './aidata.js';
 import { mountVoicemail } from './voicemail.js';
-import { mountBrain, startBrain, datasetFor, extractProposals, storeProposals, applyLogs, applyProfile } from './brain.js';
+import { mountBrain, startBrain, datasetFor, extractProposals, storeProposals, applyLogs, applyProfile, mountMemory, memoryOf, rememberFrom } from './brain.js';
 import { mountDemo, demoOn } from './demo-accounts.js';
 import { ttsOn, speakWav, speakable } from './tts.js';
 import { existsSync, readFileSync } from 'node:fs';
@@ -40,7 +40,7 @@ export const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(compression()); // gzip the web app and the API: the first load is several times smaller
-app.use(['/api/assistant', '/api/voicemail'], express.json({ limit: '7mb' })); // attachments (a PDF or photo the person chose to send)
+app.use(['/api/assistant', '/api/voicemail', '/api/cam', '/api/station'], express.json({ limit: '7mb' })); // attachments (a PDF or photo the person chose to send)
 app.use(express.json({ limit: '1mb' }));
 
 // security headers + CORS (credentials only for allow-listed origins)
@@ -395,7 +395,7 @@ app.post('/api/assistant', requireAuth, async (req, res) => {
   if (!companionGate(req, res)) return;
   try {
     await freshenWhoop(req.user.id); // active data flow: pull WHOOP first when the last sync is older than 10 minutes
-    const r = await assistantReply({ ...(req.body ?? {}), background: aiSummary(req.user.id), measured: { ...aiSnapshot(req.user.id), dataset: datasetFor(req.user.id) }, profileFiles: aiFiles(req.user.id) });
+    const r = await assistantReply({ ...(req.body ?? {}), background: aiSummary(req.user.id), measured: { memory: memoryOf(req.user.id).map(m => m.fact), dataset: datasetFor(req.user.id), ...aiSnapshot(req.user.id) }, profileFiles: aiFiles(req.user.id) });
     const asked = /day off|rest day|take a rest|skip (today|training)|lighter|schedule|plan my|выходн|отдых|\bрасписан/i.test(String((req.body?.messages ?? []).slice(-1)[0]?.text ?? ''));
     const { text, list } = extractProposals(r.reply);
     const lastText = String((req.body?.messages ?? []).slice(-1)[0]?.text ?? '');
@@ -406,6 +406,7 @@ app.post('/api/assistant', requireAuth, async (req, res) => {
     const prof = r.escalate ? { done: [], denied: [] } : applyProfile(req.user, list, { userAsked: wantsEdit });
     const denied = [...new Set([...(logged.denied ?? []), ...prof.denied])];
     const note = denied.length ? '\n\nI cannot change another astronaut\'s data: only a doctor or team leader with admin access can do that.' : '';
+    if (!r.escalate) rememberFrom(req.user.id, lastText, text || r.reply); // in the background: what is worth remembering for next time
     res.json({ ...r, reply: (text || r.reply) + note, logged: [...logged], profileChanges: prof.done, proposals: r.escalate ? [] : [...logged.pending, ...storeProposals(req.user.id, list, { userAsked: asked })] });
   } catch (e) { companionFail(res, e); }
 });
@@ -426,6 +427,7 @@ mountCam(app, PORT);
 mountTeam(app);
 mountFace(app, authResponse);
 mountBrain(app);
+mountMemory(app);
 mountVoicemail(app);
 mountDemo(app, authResponse);
 

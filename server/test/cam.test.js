@@ -105,3 +105,19 @@ test('camera station when signed in (production style): a doctor films anyone, a
   process.env.CAMERA_STATION = 'on';
 });
 test.after(() => srv.close());
+
+test('camera link mode follows the distance: live video near Earth, recorded clips far away', async () => {
+  const { db } = await import('../src/db.js');
+  const iss = db.prepare("SELECT id FROM users WHERE email = 'mira@test.local'").get().id;
+  assert.equal((await phone('GET', `/api/station/${iss}/info`)).body.mode, 'live');
+  assert.equal((await phone('GET', `/api/station/${me.id}/info`)).body.mode, 'clips'); // Alex is on a Mars mission
+  assert.equal((await phone('GET', `/api/station/${me.id}/info`)).body.delayMin, 12);
+  const clip = 'data:video/webm;codecs=vp8;base64,' + Buffer.from('fake-video-clip').toString('base64');
+  assert.equal((await phone('POST', `/api/station/${me.id}/clip`, { media: clip, seconds: 30 })).status, 200);
+  assert.equal((await phone('POST', `/api/station/${me.id}/clip`, { media: 'data:audio/webm;base64,QUJD', seconds: 5 })).status, 400);
+  assert.equal((await phone('GET', `/api/admin/crew/${me.id}/clips`)).status, 401); // only a signed-in doctor lists them
+  const list = await admin('GET', `/api/admin/crew/${me.id}/clips`); assert.equal(list.body.clips.length, 1); assert.equal(list.body.mode, 'clips');
+  const v = await admin('GET', `/api/admin/crew/${me.id}/clips/${list.body.clips[0].id}`, null, true); assert.match(v.headers.get('content-type'), /video\/webm/);
+  assert.equal((await crew('GET', `/api/admin/crew/${me.id}/clips`)).status, 403);
+  assert.equal((await admin('GET', `/api/admin/crew/${me.id}/cam`)).body.mode, 'clips');
+});
