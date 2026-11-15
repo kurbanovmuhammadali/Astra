@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import { Stack, useGlobalSearchParams, usePathname } from 'expo-router';
+import { Stack, router, useGlobalSearchParams, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold } from '@expo-google-fonts/geist';
@@ -17,7 +17,7 @@ import { loadStore } from '@/data/store';
 import { LiveProvider } from '@/live/Live';
 
 /** Pushed screens inside the crew app slide in natively on iOS; on web each page animates itself (src/kit/page.tsx). */
-const PUSHED = ['signals', 'assistant/history', 'assistant/menu', 'training/sets', 'training/[id]', 'training/setup', 'profile/edit', 'profile/privacy', 'profile/connected', 'profile/account', 'profile/presentation', 'profile/face', 'integrations', 'report', 'metric/[key]', 'legal/[doc]', 'radiation', 'eva', 'eva-check', 'radiation-log', 'research-data', 'formcheck', 'research', 'profile/briefing', 'crew', 'family', 'wellbeing', 'shelter', 'daily', 'background', 'nutrition', 'mission-plan', 'attention', 'judge', 'admin/reports', 'admin/index', 'admin/[id]', 'admin/leader', 'admin/voice', 'profile/memory', 'family-chat', 'live-hr', 'whoop-check'];
+const PUSHED = ['signals', 'assistant/history', 'assistant/menu', 'training/sets', 'training/[id]', 'training/setup', 'profile/edit', 'profile/privacy', 'profile/connected', 'profile/account', 'profile/presentation', 'profile/face', 'integrations', 'report', 'metric/[key]', 'legal/[doc]', 'radiation', 'eva', 'eva-check', 'radiation-log', 'research-data', 'formcheck', 'research', 'profile/briefing', 'crew', 'family', 'wellbeing', 'shelter', 'daily', 'background', 'nutrition', 'mission-plan', 'attention', 'judge', 'admin/reports', 'admin/index', 'admin/[id]', 'admin/leader', 'admin/voice', 'profile/memory', 'family-chat'];
 
 /** Reload skeleton until sign-in state is known (min ~0.7 s so it reads as a deliberate loading state).
  *  Its shape matches the page being opened (Home, Mission, AI, Body, Profile, lists, sign-up…). */
@@ -26,6 +26,20 @@ function Boot() {
   const path = usePathname();
   const { tab } = useGlobalSearchParams<{ tab?: string }>();
   return <BootSkeleton ready={ready} kind={skeletonKind(path, tab)} />;
+}
+
+/** Without signing in, every page sends you to Welcome, except the entrance pages, the family code sign-in (and the chat it opens) and the camera. */
+const PUBLIC = ['/', '/intro', '/welcome', '/login', '/name', '/age', '/mission', '/goal', '/data', '/email', '/code', '/face', '/team', '/done', '/doctor', '/relative', '/camera'];
+const PUBLIC_PREFIX = ['/f/', '/cam/', '/legal/'];
+function AuthGate() {
+  const { user, ready } = useAuth();
+  const path = usePathname();
+  useEffect(() => {
+    if (!ready || user) return;
+    if (PUBLIC.includes(path) || PUBLIC_PREFIX.some(p => path.startsWith(p))) return;
+    router.replace('/welcome');
+  }, [ready, user, path]);
+  return null;
 }
 
 export default function Root() {
@@ -39,6 +53,7 @@ export default function Root() {
       <DeviceInsets>
       <AuthProvider>
       <LiveProvider>
+        <AuthGate />
         <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'fade_from_bottom' }}>
           {/* onboarding screens animate themselves (src/motion.tsx), so the native stack transition is off */}

@@ -42,23 +42,3 @@ test('refresh tokens rotate; sync maps recovery, sleep and strain; an expired se
 });
 test.after(() => setTimeout(() => process.exit(0), 50));
 
-test('WHOOP check: keys, connection, a live call with the token, and the latest imported values', async () => {
-  const { whoopCheck } = await import('../src/whoop.js');
-  const real = globalThis.fetch;
-  globalThis.fetch = async (url) => {
-    const u = String(url);
-    if (u.includes('/oauth2/token')) return Response.json({ access_token: 'AX', refresh_token: 'RX', expires_in: 3600 });
-    if (u.includes('/user/measurement/body')) return Response.json({ weight_kilogram: 77 });
-    return new Response('{}', { status: 404 });
-  };
-  try {
-    db.prepare("INSERT OR IGNORE INTO users (id, email, name, password_hash, dob) VALUES (2,'c@t.test','C','!','1990-01-01')").run();
-    let c = await whoopCheck(2); assert.equal(c.configured, true); assert.equal(c.connected, false); assert.equal(c.api, null); assert.equal(c.total, 0);
-    await exchangeCode(2, 'code');
-    db.prepare("INSERT INTO measurements (user_id, metric, value, unit, source, recorded_at) VALUES (2,'hrv',61,'ms','whoop',datetime('now','-1 hour'))").run();
-    c = await whoopCheck(2); assert.equal(c.connected, true); assert.deepEqual(c.api, { ok: true, status: 200 }); assert.equal(c.latest.hrv.value, 61); assert.equal(c.total, 1);
-    globalThis.fetch = async (url) => (String(url).includes('/user/measurement/body') ? new Response('{}', { status: 401 }) : Response.json({ access_token: 'AY', refresh_token: 'RY', expires_in: 3600 }));
-    db.prepare("UPDATE integrations SET tokens = (SELECT tokens FROM integrations WHERE user_id = 2) WHERE user_id = 2").run();
-    c = await whoopCheck(2); assert.equal(c.api.ok, false); assert.equal(c.api.status, 401); // a rejected token is reported, not hidden
-  } finally { globalThis.fetch = real; }
-});
