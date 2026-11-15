@@ -10,6 +10,26 @@ import { db } from './db.js';
 import { LEGAL_VERSION, requireAuth } from './auth.js';
 import { seedDemo } from './demo-data.js';
 import { learnNorms, analyzeUser } from './brain.js';
+import { deflateSync } from 'node:zlib';
+
+/** The private link of the demo relative (Alex's mother). Anyone can open it from the login page. */
+export const DEMO_FAMILY_TOKEN = 'demo-family-mother-alex-2026';
+
+/** A small generated picture (Earth's edge in the dark), so the demo has a photo without any file or tool. PNG built by hand. */
+function demoPhoto() {
+  const W = 480, H = 270, raw = Buffer.alloc((W * 4 + 1) * H);
+  const crc = (b) => { let c, crcv = ~0; for (let n = 0; n < b.length; n++) { c = (crcv ^ b[n]) & 0xff; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crcv = (crcv >>> 8) ^ c; } return ~crcv >>> 0; };
+  for (let y = 0; y < H; y++) { raw[y * (W * 4 + 1)] = 0; for (let x = 0; x < W; x++) {
+    const o = y * (W * 4 + 1) + 1 + x * 4, dx = x - W / 2, dy = y - H * 1.9, d = Math.sqrt(dx * dx + dy * dy), R = H * 1.35;
+    let r = 6 + (y / H) * 8, g = 8 + (y / H) * 12, b = 24 + (y / H) * 30; // sky
+    if (((x * 7919 + y * 104729) % 997) < 2) { r = g = b = 230; } // stars
+    if (d < R + 14 && d >= R) { const t = 1 - (d - R) / 14; r += 60 * t; g += 130 * t; b += 230 * t; } // atmosphere glow
+    if (d < R) { const t = Math.max(0, Math.min(1, (R - d) / 60)); r = 14 + 20 * t; g = 70 + 60 * t; b = 150 + 60 * t; if (((x * 31 + y * 17) % 53) < 9 && t > 0.4) { r += 120; g += 120; b += 110; } } // ocean and clouds
+    raw[o] = Math.min(255, r); raw[o + 1] = Math.min(255, g); raw[o + 2] = Math.min(255, b); raw[o + 3] = 255; } }
+  const chunk = (type, data) => { const t = Buffer.concat([Buffer.from(type), data]); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const c = Buffer.alloc(4); c.writeUInt32BE(crc(t)); return Buffer.concat([len, t, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 6;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
 
 export const demoOn = () => process.env.DEMO_ACCOUNTS !== 'off';
 export const isDemoEmail = e => /@demo\.celeste$/i.test(String(e));
@@ -93,13 +113,29 @@ export function seedDemoAccounts() {
   console.log('[demo] demo accounts ready (astronaut, 2 doctors, team leader)');
 }
 
+
+/** The demo relative: Alex's mother, with a private link and a few messages. Idempotent, so it also appears on an existing database. */
+export function seedDemoFamily() {
+  if (!demoOn()) return;
+  const alex = db.prepare('SELECT id FROM users WHERE email = ?').get(ASTRONAUTS[0].email);
+  if (!alex) return;
+    if (!db.prepare('SELECT 1 FROM family_contacts WHERE token = ?').get(DEMO_FAMILY_TOKEN)) {
+      const { lastInsertRowid: fid } = db.prepare('INSERT INTO family_contacts (user_id, name, relation, token) VALUES (?,?,?,?)').run(alex.id, 'Mom', 'Mother', DEMO_FAMILY_TOKEN);
+      const say = (fromFamily, text, kind = 'text', mime = null, media = null) => db.prepare('INSERT INTO family_messages (contact_id, from_family, text, kind, mime, media, seconds) VALUES (?,?,?,?,?,?,0)').run(fid, fromFamily, text, kind, mime, media);
+      say(0, 'Hi Mom! Day 118 and all is well. The view from the window today is beautiful. I miss your cooking.');
+      say(0, 'Earth, a few minutes ago. It takes a while for this to reach you.', 'photo', 'image/png', demoPhoto());
+      say(1, 'We are so proud of you, Alex. Everyone at home sends love. Dad fixed the fence!');
+    }
+
+}
+
 export function mountDemo(app, authResponse) {
-  if (demoOn()) seedDemoAccounts();
+  if (demoOn()) { seedDemoAccounts(); seedDemoFamily(); }
   app.post('/api/demo/login', (req, res) => {
     if (!demoOn()) return bad(res, 'Demo accounts are off.', 404);
     const as = req.body?.as;
     const email = as === 'doctor' ? DOCTORS[0].email : as === 'leader' ? LEADER.email : as === 'astronaut-iss' ? ASTRONAUTS[1].email : ASTRONAUTS[0].email; // Alex is on a Mars mission (messages), Mira on the ISS (live calls)
-    seedDemoAccounts(); // the database may have been wiped by a restart
+    seedDemoAccounts(); seedDemoFamily(); // the database may have been wiped by a restart
     const u = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!u) return bad(res, 'Demo account missing.', 500);
     authResponse(req, res, u);

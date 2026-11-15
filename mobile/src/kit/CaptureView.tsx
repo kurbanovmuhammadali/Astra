@@ -64,7 +64,7 @@ export default function CaptureView({ base, autoStart, onExit }: { base: string;
   const recordClip = useCallback(() => {
     const s = stream.current; if (!s || typeof MediaRecorder === 'undefined') return;
     const mime = ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find(m => MediaRecorder.isTypeSupported(m));
-    const r = new MediaRecorder(s, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 180000 }); const parts: Blob[] = [], t0 = Date.now();
+    const r = new MediaRecorder(s, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 800000 }); const parts: Blob[] = [], t0 = Date.now();
     r.ondataavailable = e => { if (e.data.size) parts.push(e.data); };
     r.onstop = async () => {
       const secs = Math.round((Date.now() - t0) / 1000);
@@ -115,7 +115,7 @@ export default function CaptureView({ base, autoStart, onExit }: { base: string;
     if (!cameraAvailable()) { setErr(cameraHelp()); return; }
     try {
       const clipMode = typeof info === 'object' && !!info && info.mode === 'clips';
-      const s = await navigator.mediaDevices.getUserMedia({ video: clipMode ? { facingMode: { ideal: face }, width: { ideal: 480 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 15 } } : HD_VIDEO(face), audio: false });
+      const s = await navigator.mediaDevices.getUserMedia({ video: clipMode ? { facingMode: { ideal: face }, width: { ideal: 854 }, height: { ideal: 480 }, frameRate: { ideal: 30 } } : HD_VIDEO(face), audio: false });
       stream.current = s; video.current.srcObject = s; await video.current.play();
       try { wake.current = await (navigator as any).wakeLock?.request('screen'); } catch { /* optional */ }
       setLive(true); setSent(0);
@@ -154,7 +154,7 @@ export default function CaptureView({ base, autoStart, onExit }: { base: string;
         <Button kind="secondary" title="Flip" onPress={flip} />
       </View>
       {onExit ? <View style={{ marginTop: 10, width: '100%', maxWidth: 520 }}><Button kind="light" title="← Choose another astronaut" onPress={() => { halt(true); onExit(); }} /></View> : null}
-      {live && info && info.mode === 'clips' ? <Txt v="mono" color="#E3B79E" upper style={{ marginTop: 12 }}>Long distance · signal {Math.round(info.delayMin ?? 0)} min to Earth · recording 30 s clips for the doctor · {clipsSent} sent</Txt> : null}
+      {live && info && info.mode === 'clips' ? <Txt v="mono" color="#E3B79E" upper style={{ marginTop: 12 }}>Long distance · signal {Math.round(info.delayMin ?? 0)} min to Earth · recording 30 s clips (normal quality, compressed) for the doctor · {clipsSent} sent</Txt> : null}
       {live && quality ? <Txt v="mono" color={quality.label === 'excellent' ? '#9FD6A8' : quality.label === 'fair' ? '#E3B79E' : '#F2A08C'} upper style={{ marginTop: 6 }}>Connection {quality.label}{quality.rttMs != null ? ` · ${quality.rttMs} ms` : ''}{quality.lossPct ? ` · ${quality.lossPct}% lost` : ''}{quality.level ? ' · quality lowered to keep it smooth' : ''}</Txt> : null}
       {live ? <Txt v="mono" color={viewing ? '#9FD6A8' : '#E3B79E'} upper style={{ marginTop: 12 }}>{info && info.mode === 'clips' ? 'Clips are delivered when the link is up' : `${viewing || peers ? 'A flight surgeon is watching now' : 'Live · waiting for a viewer'} · live video${peers ? ` · ${peers} viewer${peers > 1 ? 's' : ''}` : ''}`}{reports ? ` · ${reports} report${reports > 1 ? 's' : ''} sent` : ''}</Txt> : null}
       {live ? <Txt v="mono" color="#E3B79E" upper style={{ marginTop: 6 }}>{det === 'on' ? 'Activity report on · saved, no video kept' : det === 'loading' ? 'Loading the activity model…' : det === 'error' ? 'Activity model unavailable (needs internet once)' : ''}</Txt> : null}

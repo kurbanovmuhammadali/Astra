@@ -3,8 +3,9 @@ import compression from 'compression';
 import { isDoctorEmail } from './roles.js';
 import { aiSnapshot, freshenWhoop } from './aidata.js';
 import { mountVoicemail } from './voicemail.js';
+import { mountUploads } from './uploads.js';
 import { mountBrain, startBrain, datasetFor, extractProposals, storeProposals, applyLogs, applyProfile, mountMemory, memoryOf, rememberFrom } from './brain.js';
-import { mountDemo, demoOn } from './demo-accounts.js';
+import { mountDemo, demoOn, DEMO_FAMILY_TOKEN } from './demo-accounts.js';
 import { ttsOn, speakWav, speakable } from './tts.js';
 import { existsSync, readFileSync } from 'node:fs';
 import https from 'node:https';
@@ -40,7 +41,8 @@ export const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(compression()); // gzip the web app and the API: the first load is several times smaller
-app.use(['/api/assistant', '/api/voicemail', '/api/cam', '/api/station'], express.json({ limit: '7mb' })); // attachments (a PDF or photo the person chose to send)
+app.use('/api/assistant', express.json({ limit: '7mb' })); // attachments
+app.use(['/api/voicemail', '/api/cam', '/api/station', '/api/family', '/api/me/family'], express.json({ limit: '16mb' })); // video messages and clips, normal quality, compressed // attachments (a PDF or photo the person chose to send)
 app.use(express.json({ limit: '1mb' }));
 
 // security headers + CORS (credentials only for allow-listed origins)
@@ -72,7 +74,7 @@ const authResponse = (req, res, user) => {
 };
 
 // ------------------------------------------------------------------ meta / legal
-app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), voice: ttsOn(), demoAccounts: demoOn(), mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), voice: ttsOn(), demoAccounts: demoOn(), demoFamilyToken: demoOn() ? DEMO_FAMILY_TOKEN : undefined, mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
 app.get('/api/catalog', (_req, res) => res.json({ metrics: METRICS, systems: SYSTEMS, symptoms: SYMPTOMS }));
 
 // ------------------------------------------------------------------ auth
@@ -429,6 +431,7 @@ mountFace(app, authResponse);
 mountBrain(app);
 mountMemory(app);
 mountVoicemail(app);
+mountUploads(app);
 mountDemo(app, authResponse);
 
 // ------------------------------------------------------------------ integrations

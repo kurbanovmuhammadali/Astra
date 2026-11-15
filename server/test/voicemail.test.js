@@ -30,7 +30,7 @@ test('delay-tolerant voice messages: astronaut to doctors, doctor back to the as
   assert.equal((await crew('GET', '/api/voicemail')).body.messages.length, 0);
 });
 test('too long recordings are refused', async () => {
-  const big = 'data:audio/webm;base64,' + 'A'.repeat(4_300_000);
+  const big = 'data:audio/webm;base64,' + 'A'.repeat(13_000_000);
   assert.equal((await crew('POST', '/api/voicemail', { to: 'doctors', audio: big, seconds: 90 })).status, 413);
 });
 test.after(() => srv.close());
@@ -65,3 +65,28 @@ test('with LINK_DELAY_SIM on, a message is held for the signal time', async () =
   process.env.LINK_DELAY_SIM = 'off';
   db.prepare("UPDATE users SET environment = 'station' WHERE id = ?").run(meId);
 });
+
+test('long-distance upload: chunks, a break in the middle, resume, no duplicate, photo and 9 MB video', async () => {
+  const bytes = Buffer.alloc(1_300_000, 7); // pretend: a 1.3 MB compressed video
+  const init = await crew('POST', '/api/upload', { size: bytes.length, mime: 'video/webm;codecs=vp8', kind: 'video' }); assert.equal(init.status, 200); assert.ok(init.body.chunk >= 100_000);
+  const put = (off, buf, c = crew) => fetch(`${base}/api/upload/${init.body.id}?offset=${off}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', 'X-Requested-With': 'perigee', cookie: c.cookie?.() ?? '' }, body: buf });
+  // the signed-in cookie is kept inside the jar helper: use the jar for everything but the raw body
+  const raw = async (path, method, body) => { const r = await crew('GET', '/api/auth/me', null, true); return r; };
+  assert.equal((await crew('GET', '/api/upload/nope')).status, 404);
+  const sendChunk = async (off, buf) => { const r = await fetch(`${base}/api/upload/${init.body.id}?offset=${off}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', 'X-Requested-With': 'perigee', cookie: await cookieOf(crew) }, body: buf }); return { status: r.status, body: await r.json() }; };
+  const c1 = await sendChunk(0, bytes.subarray(0, 512_000)); assert.equal(c1.body.received, 512_000);
+  // the link drops here. The sender asks how much arrived and carries on from there
+  assert.equal((await crew('GET', `/api/upload/${init.body.id}`)).body.received, 512_000);
+  const wrong = await sendChunk(100, bytes.subarray(100, 600)); assert.equal(wrong.status, 409); assert.equal(wrong.body.received, 512_000); // out of order: told where to resume
+  const c2 = await sendChunk(512_000, bytes.subarray(512_000, 1_024_000)); assert.equal(c2.body.done, false);
+  const c3 = await sendChunk(1_024_000, bytes.subarray(1_024_000)); assert.equal(c3.body.done, true);
+  const msg = await crew('POST', '/api/voicemail', { to: 'doctors', kind: 'video', uploadId: init.body.id, seconds: 40, clientId: 'abc-123', text: 'My shoulder, look' });
+  assert.equal(msg.status, 200); assert.ok(msg.body.id);
+  assert.equal((await crew('POST', '/api/voicemail', { to: 'doctors', kind: 'video', uploadId: init.body.id, seconds: 40, clientId: 'abc-123' })).body.duplicate, true); // the retry after an unclear answer: no second copy
+  const got = await doc('GET', `/api/voicemail/${msg.body.id}/media`, null, true); assert.equal(Buffer.from(await got.arrayBuffer()).equals(bytes), true); // the whole file, byte for byte
+  assert.equal((await crew('POST', '/api/upload', { size: 20_000_000, mime: 'video/webm', kind: 'video' })).status, 413);
+  assert.equal((await crew('POST', '/api/upload', { size: 1000, mime: 'application/x-msdownload', kind: 'video' })).status, 400);
+  const photo = await crew('POST', '/api/voicemail', { to: 'doctors', kind: 'photo', media: 'data:image/jpeg;base64,' + Buffer.from('jpegbytes').toString('base64') }); assert.equal(photo.status, 200);
+  assert.equal((await doc('GET', '/api/voicemail')).body.messages.some(m => m.kind === 'photo'), true);
+});
+async function cookieOf(call) { const r = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'perigee' }, body: JSON.stringify({ email: 'crew@test.local', password: 'Test-pass-2026!' }) }); return r.headers.get('set-cookie').split(';')[0]; }

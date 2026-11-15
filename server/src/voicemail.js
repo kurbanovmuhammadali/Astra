@@ -14,16 +14,16 @@ import { db } from './db.js';
 import { requireAuth, rateLimit } from './auth.js';
 import { isAdmin } from './roles.js';
 import { delayMinFor } from './linkdelay.js';
+import { parseMedia, parseUploaded } from './media.js';
+import { takeUpload } from './uploads.js';
 
 db.exec(`CREATE TABLE IF NOT EXISTS voicemails (
   id INTEGER PRIMARY KEY, from_user INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, to_user INTEGER REFERENCES users(id) ON DELETE CASCADE,
   seconds INTEGER NOT NULL, mime TEXT NOT NULL, data BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), played_at TEXT
 );`);
-for (const col of ["kind TEXT NOT NULL DEFAULT 'voice'", 'body TEXT', 'deliver_at TEXT', 'urgent INTEGER NOT NULL DEFAULT 0']) { try { db.exec(`ALTER TABLE voicemails ADD COLUMN ${col}`); } catch { /* already there */ } }
+for (const col of ["kind TEXT NOT NULL DEFAULT 'voice'", 'body TEXT', 'deliver_at TEXT', 'urgent INTEGER NOT NULL DEFAULT 0', 'client_id TEXT']) { try { db.exec(`ALTER TABLE voicemails ADD COLUMN ${col}`); } catch { /* already there */ } }
 
 const bad = (res, m, c = 400) => res.status(c).json({ error: m });
-const MAX_B64 = 4_200_000; // about 3 MB: a minute of compressed video, or several minutes of speech
-const MIME = /^(audio\/(webm|ogg|mp4|mpeg|wav|x-wav|aac)|video\/(webm|mp4))(;.*)?$/i;
 const sim = () => process.env.LINK_DELAY_SIM === 'on';
 const sqlAt = t => new Date(t).toISOString().slice(0, 19).replace('T', ' ');
 
@@ -31,7 +31,10 @@ export function mountVoicemail(app) {
   app.post('/api/voicemail', requireAuth, (req, res) => {
     if (!rateLimit(`vm:${req.user.id}`, 40, 3600e3)) return bad(res, 'Too many messages this hour.', 429);
     const admin = isAdmin(req.user);
-    const kind = ['text', 'voice', 'video'].includes(req.body?.kind) ? req.body.kind : 'voice';
+    if (req.body?.clientId && db.prepare('SELECT 1 FROM voicemails WHERE from_user = ? AND client_id = ?').get(req.user.id, String(req.body.clientId).slice(0, 60))) return res.json({ ok: true, duplicate: true }); // a retry never makes a second copy
+    const parsed = req.body?.uploadId ? parseUploaded(req.body, takeUpload(`u:${req.user.id}`, req.body.uploadId)) : parseMedia(req.body);
+    if (parsed.error) return bad(res, parsed.error, parsed.status ?? 400);
+    const { kind, text: body, mime, data, seconds } = parsed;
     let to = null;
     if (req.body?.to === 'doctors') { if (admin) return bad(res, 'Doctors write to a named astronaut.'); }
     else {
@@ -39,20 +42,10 @@ export function mountVoicemail(app) {
       to = Number(req.body?.to);
       if (!db.prepare("SELECT 1 FROM users WHERE id = ? AND role IN ('astronaut','analog')").get(to)) return bad(res, 'Astronaut not found.', 404);
     }
-    let mime = 'text/plain', data = Buffer.alloc(0), body = null, seconds = 0;
-    if (kind === 'text') {
-      body = String(req.body?.text ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, 2000);
-      if (!body) return bad(res, 'Write a message.');
-    } else {
-      const m = /^data:([^;]+(?:;[^;]*?)*?);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.media ?? req.body?.audio ?? ''));
-      if (!m || !MIME.test(m[1]) || (kind === 'video') !== /^video\//i.test(m[1])) return bad(res, kind === 'video' ? 'Send a video recording.' : 'Send an audio recording.');
-      if (m[2].length > MAX_B64) return bad(res, 'That message is too large (about 3 MB, a minute of video).', 413);
-      mime = m[1]; data = Buffer.from(m[2], 'base64'); seconds = Math.max(1, Math.min(120, Math.round(Number(req.body?.seconds) || 1)));
-    }
     const astro = db.prepare('SELECT environment, mission_goal FROM users WHERE id = ?').get(admin ? to : req.user.id);
     const when = sim() ? Date.now() + delayMinFor(astro) * 60e3 : Date.now();
-    const id = db.prepare('INSERT INTO voicemails (from_user, to_user, seconds, mime, data, kind, body, deliver_at, urgent) VALUES (?,?,?,?,?,?,?,?,?)')
-      .run(req.user.id, to, seconds, mime, data, kind, body, sqlAt(when), req.body?.urgent ? 1 : 0).lastInsertRowid;
+    const id = db.prepare('INSERT INTO voicemails (from_user, to_user, seconds, mime, data, kind, body, deliver_at, urgent, client_id) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .run(req.user.id, to, seconds, mime, data, kind, body, sqlAt(when), req.body?.urgent ? 1 : 0, req.body?.clientId ? String(req.body.clientId).slice(0, 60) : null).lastInsertRowid;
     res.json({ ok: true, id: Number(id), arrivesAt: sqlAt(when), inTransit: when > Date.now() + 1000 });
   });
 

@@ -57,7 +57,7 @@ export function CamViewer({ id, name }: { id: string | number; name: string }) {
       {farAway ? (
         <View style={{ marginTop: 12 }}>
           <Kicker color={K.ink2}>Recorded clips (30 s each)</Kicker>
-          <Txt v="caption" color={K.ink3} style={{ marginTop: 2 }}>{first} is too far away for live video. The camera records short low-bandwidth clips and sends them; they arrive when the link is up.</Txt>
+          <Txt v="caption" color={K.ink3} style={{ marginTop: 2 }}>{first} is too far away for live video. The camera records short clips at normal quality, compressed, and sends them; they arrive when the link is up.</Txt>
           {clipSrc ? React.createElement('video', { src: clipSrc, controls: true, autoPlay: true, playsInline: true, style: { width: '100%', maxHeight: 260, borderRadius: 12, marginTop: 8, backgroundColor: '#000' } }) : clipId ? <Txt v="caption" color={K.ink3} style={{ marginTop: 8 }}>Loading…</Txt> : null}
           {(clipsQ.data?.clips ?? []).slice(0, 8).map(c => <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}><Txt v="caption" color={K.ink2} style={{ flex: 1 }}>{c.at} UTC · {c.seconds}s</Txt><Button small kind={clipId === c.id ? 'primary' : 'secondary'} title="Play" onPress={() => playClip(c.id)} /></View>)}
           {clipsQ.data && !clipsQ.data.clips.length ? <Txt v="sub" color={K.ink2} style={{ marginTop: 8 }}>No clips yet.</Txt> : null}

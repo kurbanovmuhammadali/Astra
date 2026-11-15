@@ -73,7 +73,7 @@ test('an emergency alert reaches every surgeon and crew mate live, not strangers
   const late = await sock('role=inbox', doc.cookie()); assert.equal(late.msgs.some(m => m.type === 'incident'), false);
   for (const w of [docWs, benWs, zedWs, cyWs, late]) w.close();
 });
-test('calls: astronaut rings the doctors, a doctor answers; family guest rings the astronaut', async () => {
+test('calls: astronaut rings the doctors, a doctor answers; family can NOT call (video and messages only)', async () => {
   const docWs = await sock('role=inbox', doc.cookie()), adaWs = await sock('role=inbox', ada.cookie());
   adaWs.send(JSON.stringify({ type: 'call', to: 'doctors', kind: 'doctor' }));
   const inc = await wait(docWs, m => m.type === 'incoming'); assert.equal(inc.fromName, 'Ada Orbit');
@@ -83,9 +83,7 @@ test('calls: astronaut rings the doctors, a doctor answers; family guest rings t
   adaWs.send(JSON.stringify({ type: 'call', to: `u:${benId}`, kind: 'crew' })); assert.equal((await wait(adaWs, m => m.type === 'unavailable')).reason, 'offline'); // Ben is not connected
   const f = (await ada('POST', '/api/me/family', { name: 'Mama', relation: 'Mother' })).body.contact; assert.ok(f.token.length >= 20);
   const guest = await sock(`role=family&token=${f.token}`); assert.ok(guest); assert.equal(await sock('role=family&token=not-a-real-token-0000000'), null);
-  guest.send(JSON.stringify({ type: 'call', to: `u:${benId}`, kind: 'family' })); assert.equal((await wait(guest, m => m.type === 'unavailable')).reason, 'not-allowed'); // a guest may only ring their own astronaut
-  guest.send(JSON.stringify({ type: 'call', to: 'owner', kind: 'family' })); const ring = await wait(adaWs, m => m.type === 'incoming' && m.kind === 'family'); assert.equal(ring.fromName, 'Mama');
-  adaWs.send(JSON.stringify({ type: 'decline', callId: ring.callId })); assert.equal((await wait(guest, m => m.type === 'ended')).reason, 'declined');
+  guest.send(JSON.stringify({ type: 'call', to: 'owner', kind: 'family' })); assert.equal((await wait(guest, m => m.type === 'unavailable')).reason, 'no-live-link'); // family never calls: video and messages only
   assert.equal((await fetch(`${base}/api/family/${f.token}/info`).then(r => r.json())).astronaut, 'Ada');
   await fetch(`${base}/api/family/${f.token}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'We love you' }) });
   assert.equal((await ada('GET', '/api/me/family')).body.family[0].unread, 1);

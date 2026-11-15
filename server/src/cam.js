@@ -103,7 +103,7 @@ export function mountCam(app, port) {
       if (!rateLimit(`camclip:${keyOf(req)}`, 160, 3600e3)) return bad(res, 'Too many clips.', 429);
       const m = /^data:([^;]+(?:;[^;]*?)*?);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.media ?? ''));
       if (!m || !CLIP_MIME.test(m[1])) return bad(res, 'Send a video clip.');
-      if (m[2].length > 4_200_000) return bad(res, 'That clip is too large.', 413);
+      if (m[2].length > 12_500_000) return bad(res, 'That clip is too large.', 413);
       const seconds = Math.max(1, Math.min(120, Math.round(Number(req.body?.seconds) || 1)));
       db.prepare('INSERT INTO cam_clips (user_id, seconds, mime, data) VALUES (?,?,?,?)').run(o.id, seconds, m[1], Buffer.from(m[2], 'base64'));
       db.prepare('DELETE FROM cam_clips WHERE user_id = ? AND id NOT IN (SELECT id FROM cam_clips WHERE user_id = ? ORDER BY id DESC LIMIT 24)').run(o.id, o.id);

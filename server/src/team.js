@@ -12,6 +12,8 @@
  *              unanswered incidents escalate.
  */
 import { randomBytes, createHmac } from 'node:crypto';
+import { parseMedia, parseUploaded } from './media.js';
+import { takeUpload } from './uploads.js';
 import { db, tx } from './db.js';
 import { requireAuth, rateLimit } from './auth.js';
 import { requireAdmin, isAdmin } from './roles.js';
@@ -199,6 +201,11 @@ export function mountTeam(app) {
   // ---------------------------------------------------------------- family
   const famView = f => ({ id: f.id, name: f.name, relation: f.relation, token: f.token, online: online(`f:${f.id}`), unread: db.prepare('SELECT COUNT(*) n FROM family_messages WHERE contact_id = ? AND from_family = 1 AND id > COALESCE((SELECT last_read FROM family_read WHERE contact_id = ?), 0)').get(f.id, f.id).n });
   db.exec('CREATE TABLE IF NOT EXISTS family_read (contact_id INTEGER PRIMARY KEY, last_read INTEGER NOT NULL)');
+  for (const col of ["kind TEXT NOT NULL DEFAULT 'text'", 'mime TEXT', 'media BLOB', 'seconds INTEGER NOT NULL DEFAULT 0', 'client_id TEXT']) { try { db.exec(`ALTER TABLE family_messages ADD COLUMN ${col}`); } catch { /* already there */ } }
+  const MSG_COLS = 'id, from_family AS fromFamily, text, kind, seconds, created_at AS at, (media IS NOT NULL AND LENGTH(media) > 0) AS hasMedia';
+  const addMessage = (f, fromFamily, parsed, clientId) => db.prepare('INSERT INTO family_messages (contact_id, from_family, text, kind, mime, media, seconds, client_id) VALUES (?,?,?,?,?,?,?,?)').run(f.id, fromFamily, parsed.text, parsed.kind, parsed.mime, parsed.data.length ? parsed.data : null, parsed.seconds, clientId ? String(clientId).slice(0, 60) : null);
+  const sendMedia = (res, row) => { if (!row || !row.media) return bad(res, 'Not found.', 404); res.set({ 'Content-Type': row.mime, 'Cache-Control': 'no-store' }).send(Buffer.from(row.media)); };
+  setInterval(() => db.prepare("UPDATE family_messages SET media = NULL WHERE media IS NOT NULL AND created_at < datetime('now','-14 days')").run(), 3600e3).unref?.(); // recordings are kept 14 days, text stays
   app.get('/api/me/family', requireAuth, (req, res) => res.json({ family: db.prepare('SELECT * FROM family_contacts WHERE user_id = ? ORDER BY id').all(req.user.id).map(famView) }));
   app.post('/api/me/family', requireAuth, (req, res) => {
     const name = clip(req.body?.name, 40); if (name.length < 2) return bad(res, 'Enter their name.');
@@ -209,29 +216,41 @@ export function mountTeam(app) {
   app.delete('/api/me/family/:id', requireAuth, (req, res) => { db.prepare('DELETE FROM family_contacts WHERE id = ? AND user_id = ?').run(Number(req.params.id), req.user.id); res.json({ ok: true }); });
   app.get('/api/me/family/:id/messages', requireAuth, (req, res) => {
     const f = db.prepare('SELECT * FROM family_contacts WHERE id = ? AND user_id = ?').get(Number(req.params.id), req.user.id); if (!f) return bad(res, 'Not found.', 404);
-    const msgs = db.prepare('SELECT id, from_family AS fromFamily, text, created_at AS at FROM family_messages WHERE contact_id = ? ORDER BY id DESC LIMIT 40').all(f.id).reverse();
+    const msgs = db.prepare(`SELECT ${MSG_COLS} FROM family_messages WHERE contact_id = ? ORDER BY id DESC LIMIT 40`).all(f.id).reverse();
     if (msgs.length) db.prepare('INSERT INTO family_read (contact_id, last_read) VALUES (?,?) ON CONFLICT(contact_id) DO UPDATE SET last_read = excluded.last_read').run(f.id, msgs[msgs.length - 1].id);
     res.json({ messages: msgs });
   });
   app.post('/api/me/family/:id/messages', requireAuth, (req, res) => {
     const f = db.prepare('SELECT * FROM family_contacts WHERE id = ? AND user_id = ?').get(Number(req.params.id), req.user.id); if (!f) return bad(res, 'Not found.', 404);
-    const text = clip(req.body?.text, 500); if (!text) return bad(res, 'Write something first.');
-    db.prepare('INSERT INTO family_messages (contact_id, from_family, text) VALUES (?,0,?)').run(f.id, text); notify(`f:${f.id}`, { type: 'message' });
+    if (req.body?.clientId && db.prepare('SELECT 1 FROM family_messages WHERE contact_id = ? AND from_family = 0 AND client_id = ?').get(f.id, String(req.body.clientId).slice(0, 60))) return res.json({ ok: true, duplicate: true });
+    const parsed = req.body?.uploadId ? parseUploaded(req.body, takeUpload(`u:${req.user.id}`, req.body.uploadId)) : parseMedia(req.body); if (parsed.error) return bad(res, parsed.error, parsed.status ?? 400);
+    if (!rateLimit(`famout:${req.user.id}`, 60, 3600e3)) return bad(res, 'Too many messages. Try again later.', 429);
+    addMessage(f, 0, parsed, req.body?.clientId); notify(`f:${f.id}`, { type: 'message' });
     res.json({ ok: true });
+  });
+  app.get('/api/me/family/:id/messages/:mid/media', requireAuth, (req, res) => {
+    const f = db.prepare('SELECT * FROM family_contacts WHERE id = ? AND user_id = ?').get(Number(req.params.id), req.user.id); if (!f) return bad(res, 'Not found.', 404);
+    sendMedia(res, db.prepare('SELECT mime, media FROM family_messages WHERE id = ? AND contact_id = ?').get(Number(req.params.mid), f.id));
   });
   // public (the link is the credential)
   const byToken = t => (/^[A-Za-z0-9_-]{20,64}$/.test(String(t)) ? db.prepare('SELECT f.*, u.name AS astro FROM family_contacts f JOIN users u ON u.id = f.user_id WHERE f.token = ?').get(String(t)) : null);
   app.get('/api/family/:token/info', (req, res) => { const f = byToken(req.params.token); if (!f) return bad(res, 'This link is not valid.', 404); res.json({ name: f.name, astronaut: first(f.astro), available: onlineUser(f.user_id) }); });
   app.get('/api/family/:token/messages', (req, res) => {
     const f = byToken(req.params.token); if (!f) return bad(res, 'This link is not valid.', 404);
-    res.json({ messages: db.prepare('SELECT id, from_family AS fromFamily, text, created_at AS at FROM family_messages WHERE contact_id = ? ORDER BY id DESC LIMIT 40').all(f.id).reverse() });
+    res.json({ messages: db.prepare(`SELECT ${MSG_COLS} FROM family_messages WHERE contact_id = ? ORDER BY id DESC LIMIT 40`).all(f.id).reverse() });
   });
   app.post('/api/family/:token/messages', (req, res) => {
     const f = byToken(req.params.token); if (!f) return bad(res, 'This link is not valid.', 404);
     if (!rateLimit(`fam:${f.id}`, 20, 3600e3)) return bad(res, 'Too many messages. Try again later.', 429);
-    const text = clip(req.body?.text, 500); if (!text) return bad(res, 'Write something first.');
-    db.prepare('INSERT INTO family_messages (contact_id, from_family, text) VALUES (?,1,?)').run(f.id, text); notify(`u:${f.user_id}`, { type: 'family-message', name: f.name });
+    if (req.body?.clientId && db.prepare('SELECT 1 FROM family_messages WHERE contact_id = ? AND from_family = 1 AND client_id = ?').get(f.id, String(req.body.clientId).slice(0, 60))) return res.json({ ok: true, duplicate: true });
+    const parsed = req.body?.uploadId ? parseUploaded(req.body, takeUpload(`f:${f.id}`, req.body.uploadId)) : parseMedia(req.body); if (parsed.error) return bad(res, parsed.error, parsed.status ?? 400);
+    if (parsed.kind !== 'text' && !rateLimit(`famm:${f.id}`, 8, 3600e3)) return bad(res, 'Too many recordings this hour. Try again later.', 429);
+    addMessage(f, 1, parsed, req.body?.clientId); notify(`u:${f.user_id}`, { type: 'family-message', name: f.name });
     res.json({ ok: true });
+  });
+  app.get('/api/family/:token/messages/:mid/media', (req, res) => {
+    const f = byToken(req.params.token); if (!f) return bad(res, 'This link is not valid.', 404);
+    sendMedia(res, db.prepare('SELECT mime, media FROM family_messages WHERE id = ? AND contact_id = ?').get(Number(req.params.mid), f.id));
   });
 
   // ---------------------------------------------------------------- ICE servers for calls and live video (STUN, plus TURN when configured)

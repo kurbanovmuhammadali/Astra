@@ -138,6 +138,7 @@ function hub(ws, who) {
     if (m.type === 'call') {
       let to = String(m.to ?? ''); if (who.role === 'family' && to === 'owner') to = `u:${who.uid}`; // a family guest simply rings "their astronaut"
       const kind = ['doctor', 'family', 'crew'].includes(m.kind) ? m.kind : 'family';
+      if (kind === 'family' || to.startsWith('f:')) return send(ws, { type: 'unavailable', reason: 'no-live-link' }); // family reaches the astronaut by video and messages, never by call
       if (!allowed(who, to)) return send(ws, { type: 'unavailable', reason: 'not-allowed' });
       if (kind !== 'crew') { // calls between Earth and an astronaut exist only near Earth; farther out: messages and video instead
         const aid = who.role === 'family' ? who.uid : (who.admin ? Number(to.startsWith('u:') ? to.slice(2) : 0) : who.uid);

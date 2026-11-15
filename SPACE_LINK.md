@@ -18,3 +18,16 @@ The rule is `server/src/linkdelay.js`: live calls only when the one-way delay is
 4. `LINK_DELAY_SIM=on` really holds each message for the astronaut's signal time, so you can rehearse a Mars delay. It is off by default so demos stay fast.
 
 **Safety.** SOS and automatic emergency alerts are messages, not calls: they go to every doctor and crew mate at once and keep escalating. Doctors can read the SI's 30-minute analysis, which works without any live link.
+
+## Family, doctors and anything the astronaut wants to show (updated)
+There are **no calls with family at all**. Family and doctors exchange text, voice, **video at normal quality (480p, 30 fps, compressed)** and photos. Nothing is live, so nothing is squeezed to a low frame rate.
+
+**How a message crosses a long, unreliable link**
+1. **Saved on the sender's device first** (IndexedDB outbox). Closing the app or losing the link loses nothing.
+2. **Sent in 512 KB pieces** (`/api/upload`). The server counts the bytes that arrived. After a break the sender asks "how much do you have?" and continues from there, even hours later.
+3. **No duplicates.** Each message has a client id; a retry after an unclear answer is recognised and ignored.
+4. **Complete or nothing.** The recipient sees the message only after the last piece arrived.
+5. Status on the sender's screen: waiting for the link, percent sent, delivered. Recordings are kept 14 days (family) or 7 days (doctors).
+Limits: about 9 MB per message (a minute of 480p video), 6 unfinished uploads at once.
+
+**Demo relative.** The login page has "Demo relative": a private link for Alex's mother with a few messages and a photo, to show the family side without any setup.
