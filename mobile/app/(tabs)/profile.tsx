@@ -1,90 +1,94 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, Share, View } from 'react-native';
+import { Animated, View } from 'react-native';
 import { router } from 'expo-router';
-import { Link as LinkIcon, FileText, Download, Lock, Cookie, LogOut, Trash, ChevronRight, Send, ShieldCheck, Utensils, Camera } from 'lucide-react-native';
+import { UserPen, Orbit, Presentation, ScanFace, Cable, UserCog, Siren, Phone, Users, UsersRound, FileUser, Stethoscope } from 'lucide-react-native';
+import { Status } from '@/kit/settings';
 import { useAuth } from '@/auth';
-import { api, API_URL } from '@/api';
-import { C } from '@/theme';
-import { Button, Card, Field, Header, Notice, Row, Screen, T, useWide } from '@/ui';
-import PlanetScene from '@/three/PlanetScene';
+import { useApi } from '@/useApi';
+import { ELEV, K } from '@/kit/tokens';
+import { Pressy, Txt, useLayout, useLoop } from '@/kit/core';
+import { ListGroup, ListRow, Tag } from '@/kit/ui';
+import { Cols, Page } from '@/kit/page';
+import { useStore } from '@/data/store';
+import { useLive } from '@/live/Live';
 
-const ENV_LABEL: Record<string, string> = { station: 'Space station · low Earth orbit', spacecraft: 'Spacecraft · transit', lunar: 'Lunar surface base', mars: 'Mars surface base', analog: 'Earth analog habitat' };
-const ROLE_LABEL: Record<string, string> = { astronaut: 'Astronaut', surgeon: 'Flight surgeon', analog: 'Analog crew' };
+type Integrations = { providers: { key: string; status: string; name?: string }[] };
 
-function Item({ icon: Icon, label, onPress, danger }: { icon: any; label: string; onPress: () => void; danger?: boolean }) {
+function Avatar({ name }: { name: string }) {
+  const spin = useLoop(20000);
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, opacity: pressed ? 0.6 : 1 })}>
-      <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: danger ? C.redTint : C.soft, alignItems: 'center', justifyContent: 'center' }}><Icon size={17} color={danger ? C.red : C.ink} /></View>
-      <T size={15} weight="m" color={danger ? C.red : C.ink} style={{ flex: 1 }}>{label}</T>
-      <ChevronRight size={18} color={C.ink3} />
-    </Pressable>
+    <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ position: 'absolute', width: 96, height: 96, borderRadius: 48, borderWidth: 1.2, borderColor: K.copperSoft, borderStyle: 'dashed', transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] }} />
+      <View style={[{ width: 76, height: 76, borderRadius: 38, backgroundColor: K.copperTint, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff' }, ELEV.card]}>
+        <Txt v="display" color={K.copper}>{name.trim().charAt(0).toUpperCase() || 'A'}</Txt>
+      </View>
+    </View>
   );
 }
 
 export default function Profile() {
-  const { user, logout } = useAuth();
-  const wide = useWide();
-  const [del, setDel] = useState(false);
-  const [pw, setPw] = useState('');
-  const [err, setErr] = useState<string | null>(null);
+  const { user } = useAuth();
+  const { wide } = useLayout();
+  const { data: integ, reload: reloadInteg } = useApi<Integrations>('/api/integrations');
+  const profile = useStore(s => s.profile);
+  const watch = useStore(s => !!s.devices.appleWatch);
+  const face = useStore(s => !!s.face);
+  const settings = useStore(s => s.settings);
+  const live = useLive();
   if (!user) return null;
+  const whoop = integ?.providers.some(p => (p.key === 'whoop' || p.key === 'demo') && p.status === 'connected') ?? false;
 
-  const exportData = async () => {
-    if (Platform.OS === 'web') { window.open(`${API_URL}/api/account/export`, '_blank'); return; }
-    const data = await api('/api/account/export');
-    await Share.share({ title: 'Perigee export', message: JSON.stringify(data, null, 2) });
-  };
-  const deleteAccount = async () => {
-    try { await api('/api/account', { method: 'DELETE', body: user.passwordless ? { confirm: pw } : { password: pw } }); await logout(); router.replace('/welcome'); } catch (e: any) { setErr(e.message); }
-  };
-  const signOut = async () => { await logout(); router.replace('/welcome'); };
+  const head = (
+    <View style={{ alignItems: 'center', marginTop: 10, marginBottom: 6 }}>
+      <Avatar name={user.name} />
+      <Txt v="title" style={{ marginTop: 10 }}>{user.name}</Txt>
+      <Txt v="sub" color={K.ink2} style={{ marginTop: 2 }}>Crew member · {profile.duration}-day mission</Txt>
+      <Txt v="mono" color={K.ink3} style={{ marginTop: 4 }}>{user.email}</Txt>
+    </View>
+  );
+
+  const quick = (icon: any, title: string, sub: string, onPress: () => void) => (
+    <Pressy label={title} onPress={onPress} style={{ flex: 1 }}>
+      <View style={{ backgroundColor: K.card, borderRadius: 20, padding: 14, borderWidth: 1, borderColor: K.hair, minHeight: 92, justifyContent: 'space-between' }}>
+        {React.createElement(icon, { size: 22, color: K.copper })}
+        <View><Txt v="subM">{title}</Txt><Txt v="caption" color={K.ink2} numberOfLines={1}>{sub}</Txt></View>
+      </View>
+    </Pressy>
+  );
+  const left = (
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        {quick(Phone, 'Call doctor', live.connected ? 'Flight surgeon' : 'Connecting…', () => live.call('doctors', 'doctor', 'Flight surgeon'))}
+        {quick(UsersRound, 'My crew', 'Team, concerns, pulse', () => router.push('/crew'))}
+        {quick(Users, 'Family', 'Link, call, messages', () => router.push('/family'))}
+      </View>
+      <ListGroup kicker="Me">
+        <ListRow icon={UserPen} title="Edit profile" sub="Name and personal details" onPress={() => router.push('/profile/edit')} />
+        <ListRow icon={FileUser} title="Medical file" sub="CV, health conditions and files for your surgeon" onPress={() => router.push('/background')} />
+        <ListRow icon={Orbit} title="Mission briefing" sub="Destination, comm delay, EVA schedule, crew" onPress={() => router.push('/profile/briefing')} />
+        <ListRow icon={ScanFace} title="Face scan" sub="Crew recognition for camera tools" right={<Status on={face} onText="Saved" offText="Set up" />} onPress={() => router.push('/profile/face')} />
+      </ListGroup>
+    </View>
+  );
+  const right = (
+    <View style={{ gap: 12, marginTop: wide ? 0 : 12 }}>
+      <ListGroup kicker="Settings">
+        <ListRow icon={Cable} title="Connected data" sub={`WHOOP ${whoop ? 'connected' : 'not connected'} · Apple Watch ${watch ? 'connected' : 'off'}`} onPress={() => router.push('/profile/connected')} />
+        <ListRow icon={Presentation} title="Demo & presentation" sub={`${settings.demo ? 'Synthetic demo on' : 'Real data only'}${settings.judge ? ' · judge mode' : ''}`} onPress={() => router.push('/profile/presentation')} />
+        <ListRow icon={UserCog} title="Account" sub="Privacy, flight surgeon, research, sign out" onPress={() => router.push('/profile/account')} />
+      </ListGroup>
+      {user.admin || user.role === 'surgeon' ? <ListGroup kicker="Flight surgeon"><ListRow icon={Stethoscope} title="Surgeon console" sub="Crew overview, alerts, concerns, plans" onPress={() => router.push('/admin')} /></ListGroup> : null}
+      <ListGroup kicker="Safety">
+        <ListRow icon={Siren} title="Emergency protocols" sub="Offline training checklists" tone="flag" onPress={() => router.push('/emergency')} />
+      </ListGroup>
+      <Txt v="caption" color={K.ink3} center style={{ marginTop: 8 }}>Not a medical device · Not affiliated with NASA</Txt>
+    </View>
+  );
 
   return (
-    <Screen>
-      <Header title="Profile" />
-      <View style={wide ? { flexDirection: 'row', gap: 24, alignItems: 'flex-start' } : undefined}>
-        <View style={wide ? { flex: 1 } : undefined}>
-          <Card style={{ alignItems: 'center', paddingTop: 0, overflow: 'hidden' }}>
-            <PlanetScene env={user.environment} height={wide ? 300 : 230} />
-            <T size={26} weight="m">{user.name}</T>
-            <T size={14} color={C.ink2} style={{ marginTop: 2 }}>{ROLE_LABEL[user.role] ?? user.role} · {user.mission}</T>
-            <T size={12} color={C.ink3} style={{ marginTop: 4 }}>{ENV_LABEL[user.environment] ?? user.environment}</T>
-            <T size={12} color={C.ink3} style={{ marginTop: 2, marginBottom: 6 }}>{user.email}</T>
-          </Card>
-        </View>
-        <View style={wide ? { flex: 1 } : { marginTop: 14 }}>
-          <Card style={{ paddingVertical: 6 }}>
-            <Item icon={LinkIcon} label="Data sources · WHOOP & more" onPress={() => router.push('/integrations')} />
-            <Item icon={Camera} label="Training check (camera)" onPress={() => router.push('/workout')} />
-            <Item icon={Utensils} label="Food & calories" onPress={() => router.push('/food')} />
-            <Item icon={Send} label="Flight surgeon report" onPress={() => router.push('/report')} />
-            <Item icon={Download} label="Export my data" onPress={exportData} />
-          </Card>
-          <Card style={{ paddingVertical: 6, marginTop: 12 }}>
-            <Item icon={FileText} label="Terms of Use" onPress={() => router.push('/legal/terms')} />
-            <Item icon={Lock} label="Privacy Policy" onPress={() => router.push('/legal/privacy')} />
-            <Item icon={Cookie} label="Cookie Policy" onPress={() => router.push('/legal/cookies')} />
-          </Card>
-          <Card style={{ paddingVertical: 6, marginTop: 12 }}>
-            <Item icon={LogOut} label="Sign out" onPress={signOut} />
-            <Item icon={Trash} label="Delete account" danger onPress={() => setDel(!del)} />
-            {del && (
-              <View style={{ paddingBottom: 12 }}>
-                <Notice kind="red" title="This permanently deletes your account" body="All your measurements, check-ins, connections and consents are erased from our servers. This cannot be undone." />
-                {user.passwordless
-                  ? <Field label={`Type ${user.email} to confirm`} value={pw} onChangeText={setPw} autoCapitalize="none" keyboardType="email-address" />
-                  : <Field label="Confirm with your password" value={pw} onChangeText={setPw} secureTextEntry />}
-                {err ? <T size={13} color={C.red} style={{ marginBottom: 8 }}>{err}</T> : null}
-                <Button title="Delete forever" kind="danger" disabled={!pw} onPress={deleteAccount} />
-              </View>
-            )}
-          </Card>
-          <Row gap={8} style={{ marginTop: 16, justifyContent: 'center' }}>
-            <ShieldCheck size={14} color={C.ink3} />
-            <T size={12} color={C.ink3}>Not a medical device · Not affiliated with NASA</T>
-          </Row>
-        </View>
-      </View>
-    </Screen>
+    <Page tabs title="Settings" maxWidth={980} header={<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Txt v="headline">Settings</Txt><Tag label="Crew account" /></View>}>
+      {head}
+      <Cols gap={16} style={{ marginTop: 14 }}>{left}{right}</Cols>
+    </Page>
   );
 }

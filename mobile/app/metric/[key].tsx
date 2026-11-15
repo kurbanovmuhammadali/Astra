@@ -1,25 +1,27 @@
 import React, { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Plus } from 'lucide-react-native';
 import { useApi } from '@/useApi';
 import { C, statusColor } from '@/theme';
 import { Button, Card, DotMatrix, Header, Loading, Row, Screen, Segmented, StatusDot, T, useWide } from '@/ui';
+import { PageSkeleton } from '@/kit/ui';
+import { Rise } from '@/kit/core';
 
 export default function MetricDetail() {
   const { key } = useLocalSearchParams<{ key: string }>();
   const [days, setDays] = useState<'7' | '30'>('30');
-  const [showEvidence, setShowEvidence] = useState(false);
   const { data, error } = useApi<any>(`/api/metrics/${key}?days=${days}`);
   const wide = useWide();
   if (error) return <Screen><Header title="Metric" back /><T>{error}</T></Screen>;
-  if (!data) return <Screen><Header title="" back /><Loading /></Screen>;
+  if (!data) return <PageSkeleton tabs={false} />;
   const s = data.snapshot, info = data.info;
   const val = s.value == null ? '—' : s.value2 != null ? `${s.value}/${s.value2}` : s.value;
   const manual = ['bp', 'glucose', 'temp', 'weight', 'ntx', 'vitd', 'radiation', 'co2'].includes(key!);
 
   return (
     <Screen bottomSpace={40}>
+      <Rise from={22}>
       <Header title={info.label} back sub={`Source · ${s.source ?? info.source}`} />
       <View style={wide ? { flexDirection: 'row', gap: 24 } : undefined}>
         <View style={wide ? { flex: 1 } : undefined}>
@@ -46,31 +48,14 @@ export default function MetricDetail() {
             <T size={12} weight="m" color={C.ink3} style={{ letterSpacing: 1, textTransform: 'uppercase' }}>What it is</T>
             <T size={15} style={{ marginTop: 6 }}>{info.what}</T>
           </Card>
+          <Card style={{ marginBottom: 12 }} tint={C.coralTint}>
+            <T size={12} weight="m" color={C.coral} style={{ letterSpacing: 1, textTransform: 'uppercase' }}>Why it matters in space</T>
+            <T size={15} style={{ marginTop: 6 }}>{info.space}</T>
+          </Card>
           <Card style={{ marginBottom: 12 }}>
             <T size={12} weight="m" color={C.ink3} style={{ letterSpacing: 1, textTransform: 'uppercase' }}>How to measure</T>
             <T size={15} style={{ marginTop: 6 }}>{info.how}</T>
           </Card>
-          {s.early && s.driftNote ? (
-            <Card style={{ marginBottom: 12 }} tint={C.amberTint}>
-              <T size={12} weight="m" color={C.amber} style={{ letterSpacing: 1, textTransform: 'uppercase' }}>Early warning</T>
-              <T size={15} style={{ marginTop: 6 }}>{s.driftNote}</T>
-            </Card>
-          ) : null}
-          {info.evidence ? (
-            <Card style={{ marginBottom: 12 }}>
-              <Pressable accessibilityRole="button" accessibilityState={{ expanded: showEvidence }} onPress={() => setShowEvidence(v => !v)} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <T size={12} weight="m" color={C.ink3} style={{ letterSpacing: 1, textTransform: 'uppercase' }}>Evidence · {info.evidence.basisLabel}</T>
-                <T size={13} color={C.ink3}>{showEvidence ? '−' : '+'}</T>
-              </Pressable>
-              {showEvidence ? (
-                <View>
-                  <T size={14} color={C.ink2} style={{ marginTop: 8 }}>{info.evidence.note}</T>
-                  {info.evidence.references.map((r: any) => <T key={r.id} size={12} color={C.ink3} style={{ marginTop: 6 }}>[{r.id}] {r.cite}</T>)}
-                  <T size={12} color={C.ink3} style={{ marginTop: 8 }}>Baseline confidence: {s.confidence?.level ?? '—'} ({s.confidence?.baselineDays ?? 0} readings)</T>
-                </View>
-              ) : null}
-            </Card>
-          ) : null}
           <Card>
             <T size={16} weight="m" style={{ marginBottom: 8 }}>Recent readings</T>
             {data.recent.slice(0, 8).map((r: any) => (
@@ -83,6 +68,7 @@ export default function MetricDetail() {
           </Card>
         </View>
       </View>
+      </Rise>
     </Screen>
   );
 }

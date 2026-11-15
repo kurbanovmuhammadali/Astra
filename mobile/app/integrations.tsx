@@ -1,96 +1,130 @@
+/**
+ * WHOOP connection — a clear step-by-step flow instead of a grid of cards:
+ *   1 Have the WHOOP app set up · 2 Tap "Connect WHOOP" · 3 Sign in on WHOOP's own page · 4 Approve read-only access
+ *   · 5 Back in Celeste the first sync runs. The current step lights up; when connected: Sync now / Disconnect.
+ * Other sources (demo dataset, Apple Health, dosimeter, labs) are listed compactly underneath with their status.
+ */
 import React, { useState } from 'react';
 import { Platform, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-import { Watch, Database, Smartphone, FlaskConical, Radiation, Shirt } from 'lucide-react-native';
+import { Check, Watch, Database, Smartphone, FlaskConical, Radiation, Shirt, ShieldCheck } from 'lucide-react-native';
 import { api } from '@/api';
-import { extractFromFile, pickFile } from '@/appleHealth';
 import { useApi } from '@/useApi';
-import { C } from '@/theme';
-import { Button, Card, Header, Loading, Notice, Row, Screen, T, Grid } from '@/ui';
+import { K } from '@/kit/tokens';
+import { Kicker, Txt } from '@/kit/core';
+import { Button, Card, Dot, IconBubble, Notice, PageHead, Skeleton, TopBar } from '@/kit/ui';
+import { Cols, Page } from '@/kit/page';
 
 type P = { key: string; name: string; kind: string; status: string; lastSync: string | null; available: boolean; metrics: string[]; note?: string };
-const ICON: Record<string, any> = { whoop: Watch, demo: Database, 'apple-health': Watch, scenario: Database, 'nasa-osdr': FlaskConical, healthkit: Smartphone, 'nasa-lab': FlaskConical, dosimeter: Radiation, astroskin: Shirt };
-const STATUS: Record<string, [string, string]> = { connected: ['Connected', C.green], disconnected: ['Not connected', C.ink3], planned: ['Planned', C.ink3], ready: ['API ready', C.amber] };
+const ICON: Record<string, any> = { whoop: Watch, demo: Database, healthkit: Smartphone, 'nasa-lab': FlaskConical, dosimeter: Radiation, astroskin: Shirt };
+const STATUS: Record<string, [string, string]> = { connected: ['Connected', 'ok'], disconnected: ['Not connected', 'none'], planned: ['Planned', 'none'], ready: ['API ready', 'watch'] };
+
+const STEPS = [
+  ['Have WHOOP ready', 'Your strap is paired in the WHOOP app and has at least one night of data.'],
+  ['Tap “Connect WHOOP”', 'Celeste opens WHOOP’s own sign-in page — never a copy of it.'],
+  ['Sign in on WHOOP', 'Use your WHOOP email and password there. Celeste never sees your password.'],
+  ['Approve read-only access', 'Recovery, sleep, cycles, workouts and body measurements. Nothing is written back.'],
+  ['Back in Celeste', 'The first sync runs automatically; every value is labelled “WHOOP” with its time.'],
+];
+
+function Step({ n, title, sub, state, last }: { n: number; title: string; sub: string; state: 'done' | 'now' | 'next'; last?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 12 }}>
+      <View style={{ alignItems: 'center' }}>
+        <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: state === 'done' ? K.ok : state === 'now' ? K.copper : K.cardSunk, borderWidth: state === 'next' ? 1 : 0, borderColor: K.hair2 }}>
+          {state === 'done' ? <Check size={14} color="#fff" strokeWidth={3} /> : <Txt v="subM" color={state === 'now' ? '#fff' : K.ink2}>{n}</Txt>}
+        </View>
+        {!last ? <View style={{ width: 2, flex: 1, minHeight: 18, backgroundColor: state === 'done' ? K.ok : K.hair2, marginVertical: 4, borderRadius: 1 }} /> : null}
+      </View>
+      <View style={{ flex: 1, paddingBottom: last ? 0 : 14 }}>
+        <Txt v="subM" color={state === 'next' ? K.ink2 : K.ink}>{title}</Txt>
+        <Txt v="caption" color={K.ink2} style={{ marginTop: 2 }}>{sub}</Txt>
+      </View>
+    </View>
+  );
+}
 
 export default function Integrations() {
   const q = useLocalSearchParams<{ whoop?: string }>();
   const { data, reload } = useApi<{ providers: P[] }>('/api/integrations');
-  const [msg, setMsg] = useState<{ kind: 'green' | 'red' | 'amber'; text: string } | null>(
-    q.whoop === 'connected' ? { kind: 'green', text: 'WHOOP connected and synced.' } : q.whoop ? { kind: 'red', text: 'WHOOP connection was not completed.' } : null);
+  const [msg, setMsg] = useState<{ tone: 'ok' | 'flag' | 'watch'; text: string } | null>(
+    q.whoop === 'connected' ? { tone: 'ok', text: 'WHOOP connected and synced.' } : q.whoop ? { tone: 'flag', text: 'WHOOP connection was not completed. Try again from step 2.' } : null);
   const [busy, setBusy] = useState<string | null>(null);
-
-  const run = async (k: string, fn: () => Promise<void>) => { setBusy(k); try { await fn(); } catch (e: any) { setMsg({ kind: 'red', text: e.message }); } finally { setBusy(null); reload(); } };
+  const run = async (k: string, fn: () => Promise<void>) => { setBusy(k); try { await fn(); } catch (e: any) { setMsg({ tone: 'flag', text: e.message }); } finally { setBusy(null); reload(); } };
   const connectWhoop = () => run('whoop', async () => {
     const { url } = await api<{ url: string }>('/api/integrations/whoop/start', { body: { platform: Platform.OS === 'web' ? 'web' : 'native' } });
     if (Platform.OS === 'web') { window.location.href = url; return; }
     const r = await WebBrowser.openAuthSessionAsync(url, Linking.createURL('integrations'));
-    if (r.type === 'success') setMsg({ kind: 'green', text: 'WHOOP connected and synced.' });
+    if (r.type === 'success') setMsg({ tone: 'ok', text: 'WHOOP connected and synced.' });
   });
-  const syncWhoop = () => run('whoop', async () => { const r = await api<{ imported: number }>('/api/integrations/whoop/sync', { method: 'POST' }); setMsg({ kind: 'green', text: `Imported ${r.imported} WHOOP values.` }); });
-  const disconnectWhoop = () => run('whoop', async () => { await api('/api/integrations/whoop', { method: 'DELETE' }); setMsg({ kind: 'amber', text: 'WHOOP disconnected and access revoked.' }); });
-  const [progress, setProgress] = useState<string | null>(null);
-  const importApple = () => run('apple-health', async () => {
-    const file = await pickFile();
-    if (!file) return;
-    setProgress('Reading the file on this device…');
-    const samples = await extractFromFile(file, 90, f => setProgress(`Reading the file on this device… ${Math.round(f * 100)}%`));
-    if (!samples.length) throw new Error('No heart-rate, HRV, sleep, SpO₂, weight, BP, temperature or exercise records from the last 90 days were found in that file.');
-    setProgress(`Uploading ${samples.length.toLocaleString()} relevant records…`);
-    const r = await api<{ days: number; perMetric: Record<string, number> }>('/api/integrations/apple-health/batch', { body: { samples, days: 90 } });
-    setMsg({ kind: 'green', text: `Imported ${r.days} days from Apple Health: ${Object.entries(r.perMetric).map(([k, n]) => `${k} ${n}`).join(' · ')}.` });
-  }).finally(() => setProgress(null));
-  const removeApple = () => run('apple-health', async () => { await api('/api/integrations/apple-health', { method: 'DELETE' }); setMsg({ kind: 'amber', text: 'Apple Health data removed.' }); });
-  const demo = (on: boolean) => run('demo', async () => { await api('/api/integrations/demo', { method: on ? 'POST' : 'DELETE' }); setMsg({ kind: on ? 'green' : 'amber', text: on ? 'Demo dataset reloaded (30 days).' : 'Demo data removed. Only your real data remains.' }); });
+  const syncWhoop = () => run('whoop', async () => { const r = await api<{ imported: number }>('/api/integrations/whoop/sync', { method: 'POST' }); setMsg({ tone: 'ok', text: `Imported ${r.imported} WHOOP values.` }); });
+  const disconnectWhoop = () => run('whoop', async () => { await api('/api/integrations/whoop', { method: 'DELETE' }); setMsg({ tone: 'watch', text: 'WHOOP disconnected and access revoked.' }); });
+  const demo = (on: boolean) => run('demo', async () => { await api('/api/integrations/demo', { method: on ? 'POST' : 'DELETE' }); setMsg({ tone: on ? 'ok' : 'watch', text: on ? 'Demo dataset reloaded (30 days).' : 'Demo data removed. Only your real data remains.' }); });
+
+  const whoop = data?.providers.find(p => p.key === 'whoop');
+  const connected = whoop?.status === 'connected';
+  const available = whoop?.available !== false;
+  const others = data?.providers.filter(p => p.key !== 'whoop' && p.key !== 'healthkit') ?? []; // HMSC: WHOOP is the only wearable
+
+  const steps = (
+    <Card>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: K.ink, alignItems: 'center', justifyContent: 'center' }}><Watch size={20} color="#fff" /></View>
+        <View style={{ flex: 1 }}>
+          <Txt v="headline">WHOOP</Txt>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}><Dot tone={connected ? 'ok' : 'none'} size={6} /><Txt v="caption" color={K.ink2}>{connected ? `Connected${whoop?.lastSync ? ' · last sync ' + new Date(whoop.lastSync).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : ''}` : 'Not connected'}</Txt></View>
+        </View>
+      </View>
+      {STEPS.map(([t, s], i) => <Step key={t} n={i + 1} title={t} sub={s} last={i === STEPS.length - 1} state={connected ? 'done' : i === 0 ? 'done' : i === 1 ? 'now' : 'next'} />)}
+      <View style={{ marginTop: 16, gap: 8 }}>
+        {connected ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button title="Sync now" loading={busy === 'whoop'} onPress={syncWhoop} style={{ flex: 1 }} />
+            <Button title="Disconnect" kind="secondary" onPress={disconnectWhoop} style={{ flex: 1 }} />
+          </View>
+        ) : <Button title="Connect WHOOP" icon={Watch} loading={busy === 'whoop'} disabled={!available} onPress={connectWhoop} />}
+        {!available && !connected ? <Txt v="caption" color={K.ink3} center>WHOOP sign-in isn’t configured on this server yet — the demo dataset below keeps everything working.</Txt> : null}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, padding: 10, borderRadius: 12, backgroundColor: K.cardSunk }}>
+        <ShieldCheck size={16} color={K.copper} />
+        <Txt v="caption" color={K.ink2} style={{ flex: 1 }}>Read-only, revocable any time here or in the WHOOP app. Values are compared only with your own WHOOP baseline.</Txt>
+      </View>
+    </Card>
+  );
+
+  const list = (
+    <View>
+      <Kicker color={K.ink2} style={{ marginBottom: 8 }}>Other sources</Kicker>
+      <Card style={{ paddingVertical: 4 }}>
+        {others.map((p, i) => {
+          const [label, tone] = STATUS[p.status] ?? [p.status, 'none'];
+          return (
+            <View key={p.key} style={{ paddingVertical: 12, borderTopWidth: i ? 1 : 0, borderTopColor: K.hair }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <IconBubble icon={ICON[p.key] ?? Database} size={34} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Txt v="subM" numberOfLines={1}>{p.name}</Txt>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Dot tone={tone} size={6} /><Txt v="caption" color={K.ink2}>{label} · {p.kind}</Txt></View>
+                </View>
+                {p.key === 'demo' ? <Button small kind="secondary" title={p.status === 'connected' ? 'Reload' : 'Load'} loading={busy === 'demo'} onPress={() => demo(true)} /> : null}
+              </View>
+              {p.key === 'demo' && p.status === 'connected' ? <Txt v="caption" color={K.copperInk} style={{ marginTop: 6, marginLeft: 46 }} onPress={() => demo(false)}>Remove demo data</Txt> : null}
+            </View>
+          );
+        })}
+      </Card>
+    </View>
+  );
 
   return (
-    <Screen bottomSpace={40}>
-      <Header title="Data sources" back sub="Everything becomes one record: metric · value · unit · source · time" />
-      {msg ? <Notice kind={msg.kind} title={msg.text} /> : null}
-      {!data ? <Loading /> : (
-        <Grid wide={2}>
-          {data.providers.map(p => {
-            const Icon = ICON[p.key] ?? Database;
-            const [label, color] = STATUS[p.status] ?? [p.status, C.ink3];
-            return (
-              <Card key={p.key} style={{ minHeight: 200 }}>
-                <Row gap={12}>
-                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: p.key === 'whoop' ? C.ink : C.soft, alignItems: 'center', justifyContent: 'center' }}><Icon size={20} color={p.key === 'whoop' ? '#fff' : C.ink} /></View>
-                  <View style={{ flex: 1 }}>
-                    <T size={17} weight="m">{p.name}</T>
-                    <Row gap={6}><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} /><T size={12} color={C.ink2}>{label} · {p.kind}</T></Row>
-                  </View>
-                </Row>
-                <T size={12} color={C.ink3} style={{ marginTop: 10 }}>Provides: {p.metrics.join(', ')}</T>
-                {p.lastSync ? <T size={12} color={C.ink3}>Last sync: {p.lastSync} UTC</T> : null}
-                {p.note ? <T size={12} color={C.ink2} style={{ marginTop: 6 }}>{p.note}</T> : null}
-                <View style={{ marginTop: 12 }}>
-                  {p.key === 'whoop' && (p.status === 'connected'
-                    ? <Row gap={8}><Button title="Sync now" kind="dark" loading={busy === 'whoop'} onPress={syncWhoop} style={{ flex: 1, height: 46 }} /><Button title="Disconnect" kind="ghost" onPress={disconnectWhoop} style={{ flex: 1, height: 46 }} /></Row>
-                    : <>
-                        <Button title="Connect WHOOP" kind="coral" loading={busy === 'whoop'} onPress={connectWhoop} style={{ height: 46 }} />
-                        <T size={11} color={C.ink3} style={{ marginTop: 8 }}>You’ll sign in on WHOOP and approve read-only access to recovery, sleep, cycles, workouts and body measurements. We never see your WHOOP password.</T>
-                      </>)}
-                  {p.key === 'apple-health' && (Platform.OS === 'web' ? (
-                    <>
-                      <Row gap={8}>
-                        <Button title={p.status === 'connected' ? 'Import again' : 'Import Health export'} kind="coral" loading={busy === 'apple-health'} onPress={importApple} style={{ flex: 1, height: 46 }} />
-                        {p.status === 'connected' ? <Button title="Remove" kind="ghost" onPress={removeApple} style={{ flex: 1, height: 46 }} /> : null}
-                      </Row>
-                      {progress ? <T size={12} color={C.ink2} style={{ marginTop: 8 }}>{progress}</T> : null}
-                      <T size={11} color={C.ink3} style={{ marginTop: 8, lineHeight: 16 }}>
-                        On your iPhone: Health app → your photo → Export All Health Data → unzip → choose <T size={11} weight="m" color={C.ink2}>export.xml</T>. The file is read here in your browser; only heart-rate, HRV, SpO₂, sleep, weight, BP, temperature and exercise records from the last 90 days are uploaded. Apple Watch data appears in Health automatically.
-                      </T>
-                    </>
-                  ) : <T size={11} color={C.ink3} style={{ lineHeight: 16 }}>Import is available in the web app for now. Live Apple Watch sync from this phone needs the native iOS build (HealthKit), which is not included yet.</T>)}
-                  {p.key === 'demo' && <Row gap={8}><Button title="Reload demo" kind="light" loading={busy === 'demo'} onPress={() => demo(true)} style={{ flex: 1, height: 46 }} />{p.status === 'connected' ? <Button title="Remove" kind="ghost" onPress={() => demo(false)} style={{ flex: 1, height: 46 }} /> : null}</Row>}
-                </View>
-              </Card>
-            );
-          })}
-        </Grid>
+    <Page title="Connect WHOOP" maxWidth={980} header={<TopBar title="Connect WHOOP" />}>
+      <PageHead kicker="Connected data" title="Connect WHOOP" sub="Five short steps. Sign-in happens on WHOOP, not in Celeste." style={{ marginTop: 6 }} />
+      {msg ? <View style={{ marginTop: 12 }}><Notice tone={msg.tone} title={msg.text} /></View> : null}
+      {!data ? <View style={{ marginTop: 14, gap: 10 }}><Skeleton h={360} r={20} /><Skeleton h={200} r={20} /></View> : (
+        <Cols ratio={[1.1, 1]} gap={20} style={{ marginTop: 14 }}>{steps}<View style={{ marginTop: 14 }}>{list}</View></Cols>
       )}
-    </Screen>
+    </Page>
   );
 }

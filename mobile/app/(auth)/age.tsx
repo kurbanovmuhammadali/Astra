@@ -8,7 +8,7 @@ import { nav, useEntrance } from '@/motion';
 import QuestionScreen, { useHero } from '@/QuestionScreen';
 
 /** Age: the spacecraft glides in and drifts above Mars while the crew member picks their age (18–100). */
-export function Ship() {
+function Ship() {
   const { W, heroH } = useHero();
   const insets = useSafeAreaInsets();
   const e = useEntrance(1500, 120);
@@ -36,7 +36,7 @@ export default function Age() {
       value={String(d.age)}
       unit="years old"
       onBack={() => nav.back('/name')}
-      onNext={() => nav.push('/sex')}
+      onNext={() => nav.push('/mission')}
     />
   );
 }

@@ -1,100 +1,132 @@
-import React, { useState } from 'react';
-import { Image, Pressable, useWindowDimensions, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View } from 'react-native';
 import { router } from 'expo-router';
-import { useApi } from '@/useApi';
-import { C, statusColor, statusTint, statusWord } from '@/theme';
-import type { Dashboard } from '@/types';
-import { Card, FadeIn, Header, Loading, Row, Screen, StatusDot, T, useWide } from '@/ui';
-import { Floaty, IMG, RATIO } from '@/astra';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Activity, Bone, Brain, Eye, HeartPulse, Footprints, RotateCcw, ChevronRight } from 'lucide-react-native';
+import { K, RAD, ELEV, toneWord } from '@/kit/tokens';
+import { Kicker, Pressy, Swap, Txt, useLayout } from '@/kit/core';
+import { Card, Chip, ChipRow, Dot, ListGroup, ListRow, Stepper, Tag } from '@/kit/ui';
+import { Cols, Page } from '@/kit/page';
+import BodyMap from '@/BodyMap';
+import { ReadingSheet, SourceChip } from '@/kit/mission';
+import { useMission, type Reading } from '@/data/mission';
+import { FlaskConical } from 'lucide-react-native';
+import { assessRisks } from '@/data/risk';
+import { useSources } from '@/data/freshness';
+import { sensorConfidence } from '@/data/confidence';
+import { ConfidenceRow } from '@/kit/tools';
 
-/** Where each system sits on the artwork (share of image width / height). */
-const SPOTS: { key: string; x: number; y: number }[] = [
-  { key: 'brain', x: 0.42, y: 0.08 },
-  { key: 'eyes', x: 0.58, y: 0.2 },
-  { key: 'immune', x: 0.5, y: 0.37 },
-  { key: 'heart', x: 0.56, y: 0.6 },
-  { key: 'bones', x: 0.2, y: 0.62 },
-  { key: 'metabolism', x: 0.5, y: 0.88 },
-];
+const READING_OF: Record<string, string> = { heart: 'rhr', bone: 'ntx', mood: 'mood' };
+import { LAYERS, LayerKey, findings as allFindings, useCrew } from '@/data/crew';
+
+const ICON: Record<string, any> = { vision: Eye, heart: HeartPulse, knee: Footprints, mood: Brain, bone: Bone };
 
 export default function Body() {
-  const { data } = useApi<Dashboard>('/api/dashboard');
-  const [sel, setSel] = useState<string | null>('heart');
-  const wide = useWide();
-  const { width: W } = useWindowDimensions();
-  const figW = Math.min(wide ? 520 : W - 40, 460);
-  if (!data) return <Screen><Loading /></Screen>;
-  // a system with no readings has no status: show grey "No data", never a made-up "Normal"
-  const hasData = (s: { metrics: string[] }) => s.metrics.some(k => data.metrics[k]?.value != null && data.metrics[k]?.status && data.metrics[k].status !== 'none');
-  const statusOf = (s: { key: string; status: string; metrics: string[] }) => (hasData(s) ? s.status : 'none');
-  const statuses = Object.fromEntries(data.systems.map(s => [s.key, statusOf(s)]));
-  const sys = data.systems.find(s => s.key === sel);
+  const crew = useCrew();
+  const { wide, gutter } = useLayout();
+  const [li, setLi] = useState(0);
+  const [sel, setSel] = useState<string | null>(null);
+  const layer = LAYERS[li];
+  const today = crew.days[6];
+  const m = useMission();
+  const sources = useSources(crew);
+  const confidence = useMemo(() => sensorConfidence(crew, sources), [crew, sources]);
+  const risks = useMemo(() => assessRisks(today, crew.duration), [today, crew.duration]);
+  // findings come from the real readings and symptoms: an area with no data stays unmarked (nothing is invented)
+  const all = useMemo(() => {
+    const R = m.readings, sym = m.symptoms, t = (x: string) => (x === 'flag' || x === 'watch' ? x : 'ok') as 'ok' | 'watch' | 'flag';
+    return allFindings(today.rhr).flatMap(f => {
+      if (f.id === 'mood') { const r = R.mood; return r.value == null ? [] : [{ ...f, tone: t(r.tone), sub: `Mood ${r.text}${r.note ? ' · ' + r.note : ''}` }]; }
+      if (f.id === 'heart') { const r = R.rhr; return r.value == null ? [] : [{ ...f, tone: t(r.tone), sub: `${r.text}${r.baseline ? ` · your range ${r.baseline.lo}–${r.baseline.hi}` : ' · baseline still building'}` }]; }
+      if (f.id === 'bone') { const r = R.ntx; return r.value == null ? [] : [{ ...f, tone: t(r.tone), sub: `NTx ${r.text} · lab result` }]; }
+      if (f.id === 'vision') return sym.includes('vision') ? [f] : [];
+      if (f.id === 'knee') return sym.includes('knee') ? [f] : [];
+      return [f];
+    });
+  }, [today.rhr, m.readings, m.symptoms]);
+  const marks = all; // whole body: every finding at once
+  const selected = all.find(f => f.id === sel);
+  const [sheet, setSheet] = useState<Reading | null>(null);
+  const selReading = selected && READING_OF[selected.id] ? m.readings[READING_OF[selected.id]] : null;
 
-  const detail = sys && (
-    <FadeIn key={sys.key}>
-      <Card>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <T size={22} weight="m">{sys.label}</T>
-          <View style={{ backgroundColor: statusTint(statusOf(sys)), borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
-            <T size={12} weight="sb" color={statusColor(statusOf(sys))}>{statusWord(statusOf(sys))}</T>
-          </View>
-        </Row>
-        <View style={{ height: 1, backgroundColor: C.line, marginVertical: 14 }} />
-        {sys.metrics.map(k => {
-          const m = data.metrics[k];
-          if (!m) return null;
-          return (
-            <Pressable key={k} onPress={() => router.push(`/metric/${k}`)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}>
-              <View style={{ flex: 1 }}>
-                <T size={15} weight="m">{m.label}</T>
-                <StatusDot status={m.status} />
-              </View>
-              <T size={20} weight="m">{m.value == null ? '—' : m.value2 != null ? `${m.value}/${m.value2}` : m.value}</T>
-              <T size={12} color={C.ink3} style={{ marginLeft: 4, width: 64 }}>{m.unit}</T>
-            </Pressable>
-          );
-        })}
-        {sys.reasons.filter(r => r.symptom).map(r => (
-          <Row key={r.symptom} gap={8} style={{ paddingVertical: 6 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor(r.status) }} /><T size={14}>Symptom reported: {r.label}</T></Row>
+  const viewer = (
+    <View>
+      <BodyMap findings={marks} selected={sel} onSelect={setSel} height={wide ? 640 : 470} />
+      <View pointerEvents="box-none" style={{ position: 'absolute', top: 12, left: 12, right: 12, flexDirection: 'row', justifyContent: 'space-between' }}>
+        <View style={{ backgroundColor: 'rgba(255,253,251,0.85)', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 }}><Kicker color={K.ink2}>{sel ? `Focus · ${selected?.label}` : 'Whole body'}</Kicker></View>
+        {sel ? <Pressy label="Reset view" onPress={() => setSel(null)}><View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,253,251,0.9)', alignItems: 'center', justifyContent: 'center' }}><RotateCcw size={15} color={K.ink} /></View></Pressy> : null}
+      </View>
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: 12, right: 14, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        <Txt v="mono" color={K.ink2} upper style={{ fontSize: 9.5 }}>Tap a dot to zoom in</Txt>
+      </View>
+    </View>
+  );
+
+  const legend = (
+    <View style={{ marginTop: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 14, flexWrap: 'wrap' }}>
+        {(['ok', 'watch', 'flag'] as const).map(t => <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Dot tone={t} size={7} /><Txt v="caption" color={K.ink2}>{toneWord(t)}</Txt></View>)}
+      </View>
+      <Txt v="caption" color={K.ink3} style={{ marginTop: 6 }}>Dots mark recorded findings. Areas without data are unmarked.</Txt>
+    </View>
+  );
+
+  const side = (
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22, marginBottom: 10 }}>
+        <Txt v="headline">Findings</Txt>
+        <Txt v="mono" color={K.ink3} upper>{marks.length} findings</Txt>
+      </View>
+      <ListGroup>
+        {all.map(f => (
+          <ListRow key={f.id} icon={ICON[f.id] ?? Activity} title={f.title} sub={f.sub} tone={f.tone} current={sel === f.id}
+            onPress={() => setSel(sel === f.id ? null : f.id)} />
         ))}
+      </ListGroup>
+      {selected ? (
+        <Swap k={selected.id}>
+          <Card style={{ marginTop: 10 }} onPress={() => (selReading ? setSheet(selReading) : router.push(selected.route as any))} label={`Open ${selected.title}`}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Dot tone={selected.tone} pulse />
+              <View style={{ flex: 1 }}>
+                <Txt v="subM">{toneWord(selected.tone)} · {selected.title}</Txt>
+                {selReading ? <View style={{ marginTop: 3, gap: 3 }}><Txt v="headline" tabular>{selReading.text}</Txt><SourceChip r={selReading} /></View>
+                  : <Txt v="caption" color={K.ink2}>Reported in a crew check-in · no device reading</Txt>}
+              </View>
+              <ChevronRight size={17} color={K.ink3} />
+            </View>
+          </Card>
+        </Swap>
+      ) : null}
+      <Card style={{ marginTop: 12 }}>
+        <ConfidenceRow c={confidence} full />
       </Card>
-    </FadeIn>
+      <ListGroup kicker="Mission risk report" style={{ marginTop: 12 }}>
+        {risks.map(r => <ListRow key={r.id} icon={Activity} title={r.title} sub={r.note} tone={r.tone} chevron={false} right={<Tag label={r.tone === 'ok' ? 'Stable' : r.tone === 'watch' ? 'Watch' : r.tone === 'flag' ? 'Action' : 'No data'} tone={r.tone} />} />)}
+      </ListGroup>
+      <Card onPress={() => router.push('/research')} label="NASA research layer" style={{ marginTop: 14 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1 }}><Kicker color="#3F6797">NASA research · not your data</Kicker><Txt v="headline" style={{ marginTop: 4 }}>Inspiration4 blood counts</Txt><Txt v="caption" color={K.ink2}>Pre- and post-flight research context</Txt></View>
+          <FlaskConical size={18} color="#3F6797" />
+        </View>
+      </Card>
+      <Card onPress={() => router.push('/signals')} label="Health signals" style={{ marginTop: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1 }}><Kicker>Body analytics</Kicker><Txt v="headline" style={{ marginTop: 4 }}>Health signals</Txt><Txt v="caption" color={K.ink2}>Recovery, heart-rate trend and personal dosimetry</Txt></View>
+          <ChevronRight size={18} color={K.ink3} />
+        </View>
+      </Card>
+    </View>
   );
 
   return (
-    <Screen>
-      <Header title="Body" />
-      <View style={wide ? { flexDirection: 'row', gap: 24 } : undefined}>
-        <View style={wide ? { flex: 1 } : undefined}>
-          <View style={{ alignItems: 'center', paddingVertical: 8 }}>
-            <Floaty amp={5} rotate={0} dur={4200}>
-              <View style={{ width: figW, height: figW / RATIO.body }}>
-                <Image source={IMG.body} style={{ width: '100%', height: '100%' }} resizeMode="contain" accessibilityIgnoresInvertColors />
-                {SPOTS.map(p => {
-                  const on = sel === p.key;
-                  return (
-                    <Pressable key={p.key} accessibilityRole="button" accessibilityLabel={data.systems.find(x => x.key === p.key)?.label ?? p.key} hitSlop={8} onPress={() => setSel(p.key)}
-                      style={{ position: 'absolute', left: `${p.x * 100}%`, top: `${p.y * 100}%`, width: 36, height: 36, marginLeft: -18, marginTop: -18, alignItems: 'center', justifyContent: 'center' }}>
-                      <View style={{ width: on ? 30 : 22, height: on ? 30 : 22, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.55)', alignItems: 'center', justifyContent: 'center', borderWidth: on ? 2 : 0, borderColor: C.ink }}>
-                        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: statusColor(statuses[p.key] ?? 'none') }} />
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </Floaty>
-          </View>
-          <Row wrap gap={8} style={{ justifyContent: 'center', marginTop: 4, marginBottom: 16 }}>
-            {data.systems.map(s => (
-              <Pressable key={s.key} onPress={() => setSel(s.key)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: sel === s.key ? C.ink : '#fff' }}>
-                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: statusColor(statusOf(s)) }} />
-                <T size={13} weight="m" color={sel === s.key ? '#fff' : C.ink}>{s.label}</T>
-              </Pressable>
-            ))}
-          </Row>
-        </View>
-        <View style={wide ? { flex: 1 } : undefined}>{detail}</View>
-      </View>
-    </Screen>
+    <Page tabs title="Body explorer" header={<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Txt v="headline">Body explorer</Txt><Tag label="Body map" /></View>}>
+      <Cols ratio={[1.25, 1]} gap={28} style={{ marginTop: 14 }}>
+        <View>{viewer}{legend}</View>
+        {side}
+      </Cols>
+      <Txt v="caption" color={K.ink3} center style={{ marginTop: 22 }}>Illustration for orientation only — not diagnostic.</Txt>
+      <ReadingSheet r={sheet} onClose={() => setSheet(null)} />
+    </Page>
   );
 }
