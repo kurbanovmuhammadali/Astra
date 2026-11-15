@@ -21,7 +21,7 @@ export function seedDemo(userId, seed = 7) {
   tx(() => {
     for (let i = 29; i >= 0; i--) {
       const day = new Date(); day.setUTCHours(6, 30, 0, 0); day.setUTCDate(day.getUTCDate() - i);
-      const t = (h, m = 0) => { const d = new Date(day); d.setUTCHours(h, m); return d > new Date() ? null : toSql(d); };
+      const t = (h, m = 0) => { const d = new Date(day); d.setUTCHours(h, m); const now = new Date(Date.now() - 60e3); return toSql(d > now ? now : d); }; // later-today readings are stamped "just now" so the demo story does not depend on the hour of day
       const late = i < 6; // last week drifts
       const id = (k) => `demo-${k}-${i}`;
       const sleep = late ? n(6.1, 0.35) : n(7.2, 0.45);

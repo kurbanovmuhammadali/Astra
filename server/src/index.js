@@ -1,41 +1,28 @@
 import express from 'express';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import https from 'node:https';
+import { networkInterfaces } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, tx } from './db.js';
+db.exec('DROP TABLE IF EXISTS voice_samples'); // the removed voice-cloning feature stored recordings here: delete them
 import {
   hashPassword, verifyPassword, passwordProblem, ageFrom, createSession, setSessionCookie, SESSION_COOKIE,
   requireAuth, publicUser, rateLimit, sha256, token, LEGAL_VERSION, sessionUser,
 } from './auth.js';
 import { METRICS, SYSTEMS, SYMPTOMS } from './health/catalog.js';
-import { dashboard, series, metricSnapshot, adaptivePlan, missionPlan, today, toSql, parseTs, baselineOf, evaluate } from './health/engine.js';
-import { REFERENCES, BASIS_LABEL } from './health/references.js';
+import { dashboard, series, metricSnapshot, adaptivePlan, missionPlan, today, toSql, baselineOf, evaluate } from './health/engine.js';
 import { seedDemo, clearDemo } from './demo.js';
-import { seedScenario, clearScenario, SCENARIO, TRUTH } from './scenario.js';
-import { aiConfigured, buildContext, ask as askAssistant } from './assistant.js';
-import { llmProvider, PROVIDER_LABEL } from './llm.js';
-import { parseExportXml, normalizeRecords, saveAppleHealth, clearAppleHealth } from './applehealth.js';
-import { mailConfigured, mailProvider, sendMail, verificationEmail, noticeEmail } from './mail.js';
-import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
-import { searchFoods, addFood, deleteFood, daySummary, setGoal, estimateFromPhoto, getProfile, setProfile } from './food.js';
-import { addWorkout, listWorkouts } from './workouts.js';
-import { goalsFor, saveDaily } from './goals.js';
-import { createPlan, getPlan } from './planner.js';
-import { seedOsdrI4, clearOsdr, osdrReplayMeta, I4 } from './osdr.js';
-
-const DAY_MS = 864e5;
-/** Optional ?asOf=ISO-date replays the dashboard at a past moment (used by the mission replay). Clamped to [-400 days, now]. */
-const asOfOf = req => {
-  const t = req.query.asOf ? new Date(String(req.query.asOf)).getTime() : NaN;
-  const now = Date.now();
-  return Number.isFinite(t) ? Math.min(now, Math.max(now - 400 * DAY_MS, t)) : now;
-};
-const dayOf = ms => new Date(ms).toISOString().slice(0, 10);
-const withEvidence = key => {
-  const e = METRICS[key].evidence;
-  return e ? { ...e, basisLabel: BASIS_LABEL[e.basis], references: e.refs.map(id => ({ id, ...REFERENCES[id] })) } : null;
-};
-import { whoopConfigured, authorizeUrl, consumeState, exchangeCode, syncWhoop, disconnectWhoop } from './whoop.js';
+import { whoopConfigured, authorizeUrl, consumeState, exchangeCode, syncWhoop, disconnectWhoop, startWhoopAutoSync } from './whoop.js';
+import { companionConfigured, assistantReply } from './companion.js';
+import { mailConfigured, sendMail, codeEmail } from './mail.js';
+import { mountAdmin } from './admin.js';
+import { mountCam } from './cam.js';
+import { mountTeam } from './team.js';
+import { mountFace } from './face.js';
+import { attachRtc } from './rtc.js';
+import { mountBackground, aiSummary } from './background.js';
+import { demoLoginOn, seedDemoPeople, demoUser } from './demo-login.js'; // DEMO-ONLY
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4000);
@@ -47,16 +34,14 @@ const MIN_AGE = 18;
 export const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
-const jsonSmall = express.json({ limit: '1mb' }), jsonBig = express.json({ limit: '25mb' });
-const jsonPhoto = express.json({ limit: '6mb' });
-app.use((req, res, next) => (req.path === '/api/integrations/apple-health/batch' ? jsonBig : req.path === '/api/food/photo' ? jsonPhoto : jsonSmall)(req, res, next));
+app.use(express.json({ limit: '1mb' }));
 
 // security headers + CORS (credentials only for allow-listed origins)
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');   // same-origin only: the desktop phone frame embeds the app itself
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
   if (PROD) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   const o = req.headers.origin;
   if (o && ORIGINS.has(o)) {
@@ -80,8 +65,8 @@ const authResponse = (req, res, user) => {
 };
 
 // ------------------------------------------------------------------ meta / legal
-app.get('/api/health', (_req, res) => res.json({ ok: true, email: mailProvider(), codeLength: 6, ai: aiConfigured(), aiProvider: PROVIDER_LABEL[llmProvider()] ?? null, whoop: whoopConfigured(), legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
-app.get('/api/catalog', (_req, res) => res.json({ metrics: METRICS, systems: SYSTEMS, symptoms: SYMPTOMS, references: REFERENCES }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, whoop: whoopConfigured(), companion: companionConfigured(), mail: mailConfigured(), emailVerification: process.env.EMAIL_VERIFICATION === 'on', demoLogin: demoLoginOn(PROD), legalVersion: LEGAL_VERSION, minAge: MIN_AGE }));
+app.get('/api/catalog', (_req, res) => res.json({ metrics: METRICS, systems: SYSTEMS, symptoms: SYMPTOMS }));
 
 // ------------------------------------------------------------------ auth
 app.post('/api/auth/register', (req, res) => {
@@ -92,7 +77,7 @@ app.post('/api/auth/register', (req, res) => {
   const pp = passwordProblem(password); if (pp) return bad(res, pp);
   const age = ageFrom(String(dob || ''));
   if (!Number.isFinite(age) || age > 120) return bad(res, 'Please enter a valid date of birth.');
-  if (age < MIN_AGE) return bad(res, `You must be at least ${MIN_AGE} to use PERIGEE.`, 403);
+  if (age < MIN_AGE) return bad(res, `You must be at least ${MIN_AGE} to use HMSC.`, 403);
   if (!acceptTerms || !acceptPrivacy) return bad(res, 'You need to accept the Terms and Privacy Policy.');
   if (!consentHealth) return bad(res, 'Explicit consent to process health data is required.');
   if (!['astronaut', 'surgeon', 'analog'].includes(role)) return bad(res, 'Invalid role.');
@@ -104,6 +89,7 @@ app.post('/api/auth/register', (req, res) => {
     ['terms', 'privacy', 'health_data'].forEach(k => c.run(id, k, LEGAL_VERSION));
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   });
+  seedDemo(user.id); // every new crew member starts with a clearly-labelled demo dataset
   authResponse(req, res, user);
 });
 
@@ -115,26 +101,6 @@ app.post('/api/auth/login', (req, res) => {
   authResponse(req, res, user);
 });
 
-// ------------------------------------------------------------------ guest demo crew (works in production, synthetic data only)
-// One tap, no email: a throw-away crew member with the scripted Mars-transit scenario. Purged after 24 h.
-app.post('/api/auth/guest', (req, res) => {
-  const dataset = req.body?.dataset === 'osdr' ? 'osdr' : 'scenario';
-  const crew = I4.crew.includes(req.body?.crew) ? req.body.crew : 'C001';
-  if (!rateLimit(`guest:${req.ip}`, 30, 60 * 60e3)) return bad(res, 'Too many demo sessions from this network. Try later.', 429);
-  db.prepare(`DELETE FROM users WHERE email LIKE 'guest-%@guest.astra.demo' AND created_at < datetime('now','-1 day')`).run();
-  const user = tx(() => {
-    const email = `guest-${token(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}@guest.astra.demo`;
-    const { lastInsertRowid: id } = db.prepare('INSERT INTO users (email, name, password_hash, dob, role, mission, environment, mission_years) VALUES (?,?,?,?,?,?,?,?)')
-      .run(email, dataset === 'osdr' ? `${crew} · Inspiration4` : 'Alex Morgan', '!', '1988-01-01', 'astronaut', dataset === 'osdr' ? 'Inspiration4 · real NASA OSDR labs' : 'Mars transit · demo crew', dataset === 'osdr' ? 'station' : 'mars', dataset === 'osdr' ? 0.5 : 2.5);
-    const c = db.prepare('INSERT INTO consents (user_id, kind, version) VALUES (?,?,?)');
-    ['terms', 'privacy', 'health_data'].forEach(k => c.run(id, k, LEGAL_VERSION));
-    return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  });
-  if (dataset === 'osdr') seedOsdrI4(user.id, crew); else seedScenario(user.id);
-  db.prepare("UPDATE users SET data_source='demo' WHERE id=?").run(user.id);
-  authResponse(req, res, db.prepare('SELECT * FROM users WHERE id = ?').get(user.id));
-});
-
 // ------------------------------------------------------------------ demo crew account (development only)
 // A ready-made crew member with sample data so the log-in flow can be tested without a real mailbox.
 export const DEMO_EMAIL = 'crew@astra.demo';
@@ -143,57 +109,56 @@ if (!PROD && !db.prepare('SELECT 1 FROM users WHERE email = ?').get(DEMO_EMAIL))
     .run(DEMO_EMAIL, 'Alex Morgan', '!', '1988-01-01', 'astronaut', '2.5-year mission', 'mars', 2.5);
   ['terms', 'privacy', 'health_data'].forEach(k => db.prepare('INSERT INTO consents (user_id, kind, version) VALUES (?,?,?)').run(id, k, LEGAL_VERSION));
   seedDemo(Number(id));
-  db.prepare("UPDATE users SET data_source='demo' WHERE id=?").run(Number(id));
 }
 
-// ------------------------------------------------------------------ passwordless: email + 6-digit code
+// ==== DEMO-ONLY BEGIN: temporary one-click demo sign-in (see DEMO_REMOVAL.md). Needs DEMO_LOGIN=on and a non-production server. ====
+if (demoLoginOn(PROD)) seedDemoPeople();
+app.post('/api/demo/login', (req, res) => {
+  if (!demoLoginOn(PROD)) return bad(res, 'Demo sign-in is off.', 404);
+  const u = demoUser(req.body?.as === 'admin' ? 'admin' : 'crew');
+  if (!u) return bad(res, 'Demo user missing.', 500);
+  authResponse(req, res, u);
+});
+// ==== DEMO-ONLY END ====
+
+// ------------------------------------------------------------------ passwordless: email + 4-digit code
 // purpose 'signup' = new account from the onboarding flow, 'login' = crew account prepared by the mission.
 const CODE_TTL = 10 * 60e3;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const envForYears = y => (y <= 1 ? 'station' : y <= 2 ? 'lunar' : y <= 4 ? 'mars' : 'spacecraft');
 
-const CODE_LEN = 6;
-const RESEND_COOLDOWN = 45e3;
-const codeHash = (email, code) => createHmac('sha256', process.env.TOKEN_ENC_KEY || 'dev-only-key-change-me').update(`${email}:${code}`).digest('hex');
-const safeEq = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-
 app.post('/api/auth/code', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const purpose = req.body?.purpose === 'login' ? 'login' : 'signup';
-  if (!EMAIL_RE.test(email) || email.length > 254) return bad(res, 'Please enter a valid email.');
-  if (!rateLimit(`code:${req.ip}`, 10, 15 * 60e3) || !rateLimit(`code:${email}`, 5, 15 * 60e3)) return bad(res, 'Too many codes requested. Wait a few minutes.', 429);
-  const live = mailConfigured();
-  if (PROD && !live) return bad(res, 'Email delivery is not configured on this server yet.', 503);
+  if (!EMAIL_RE.test(email)) return bad(res, 'Please enter a valid email.');
+  // the shared demo crew account is used by many judges at once → no per-email cap for it (per-IP limit still applies)
+  const demo = email.toLowerCase() === DEMO_EMAIL;
+  if (!rateLimit(`code:${req.ip}`, demo ? 30 : 10, 15 * 60e3) || (!demo && !rateLimit(`code:${email}`, 5, 15 * 60e3))) return bad(res, 'Too many codes requested. Wait a few minutes.', 429);
   const exists = !!db.prepare('SELECT 1 FROM users WHERE email = ?').get(email);
-
-  // Mismatch (signup for an existing email / login for an unknown one): the demo build says so plainly; a live server answers
-  // identically either way (and mails a short notice) so the endpoint cannot be used to find out who has an account.
-  if ((purpose === 'signup' && exists) || (purpose === 'login' && !exists)) {
-    if (!PROD) return purpose === 'signup' ? bad(res, 'This email already has an account. Use Log in instead.', 409) : bad(res, 'We could not find a crew account for this email.', 404);
-    sendMail({ to: email, ...noticeEmail(exists ? 'exists' : 'missing') }).catch(e => console.error('[mail] notice failed:', e.message));
-    return res.json({ ok: true, codeLength: CODE_LEN, ttlMinutes: CODE_TTL / 60e3 });
+  if (purpose === 'signup' && exists) return bad(res, 'This email already has an account. Use Log in instead.', 409);
+  if (purpose === 'login' && !exists) return bad(res, 'We could not find a crew account for this email.', 404);
+  const code = String(Math.floor(1000 + Math.random() * 9000));
+  db.prepare('INSERT OR REPLACE INTO email_codes (email, purpose, code_hash, attempts, expires_at) VALUES (?,?,?,0,?)')
+    .run(email, purpose, sha256(`${email}:${code}`), Date.now() + CODE_TTL);
+  // Real email verification. EMAIL_VERIFICATION=on makes it mandatory (never falls back to showing the code);
+  // otherwise (auto) a configured mail provider is used, and only an unconfigured dev server shows the code for the demo.
+  const wantMail = process.env.EMAIL_VERIFICATION === 'on' || mailConfigured();
+  if (wantMail && !(email === DEMO_EMAIL && !PROD)) {
+    if (!mailConfigured()) {
+      db.prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?').run(email, purpose);
+      return bad(res, 'Email verification is on, but this server cannot send email yet. Add the mail settings to server/.env (see .env.example).', 503);
+    }
+    try { await sendMail({ to: email, ...codeEmail(code, purpose) }); }
+    catch (e) {
+      db.prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?').run(email, purpose);
+      console.error('[mail] send failed:', e.message);
+      return bad(res, 'We could not send the email. Check the address and try again in a minute.', 502);
+    }
+    console.log(`[mail] ${purpose} code sent to ${email}`); // the code itself is never logged or returned
+    return res.json({ ok: true, sent: true });
   }
-
-  const prev = db.prepare('SELECT sent_at FROM email_codes WHERE email = ? AND purpose = ?').get(email, purpose);
-  if (prev?.sent_at && Date.now() - prev.sent_at < RESEND_COOLDOWN) {
-    return bad(res, `Please wait ${Math.ceil((RESEND_COOLDOWN - (Date.now() - prev.sent_at)) / 1000)} seconds before asking for another code.`, 429);
-  }
-  const code = String(randomInt(10 ** (CODE_LEN - 1), 10 ** CODE_LEN));
-  db.prepare('INSERT OR REPLACE INTO email_codes (email, purpose, code_hash, attempts, expires_at, sent_at) VALUES (?,?,?,0,?,?)')
-    .run(email, purpose, codeHash(email, code), Date.now() + CODE_TTL, Date.now());
-
-  if (!live) { // development without a mail provider: show the code in the log and hand it back so the flow can be tested end to end
-    console.log(`[mail:dev] ${purpose} code for ${email}: ${code}  (set RESEND_API_KEY or SMTP_URL to send real email)`);
-    return res.json({ ok: true, codeLength: CODE_LEN, ttlMinutes: CODE_TTL / 60e3, devCode: code });
-  }
-  try {
-    await sendMail({ to: email, ...verificationEmail(code, purpose, CODE_TTL / 60e3) });
-  } catch (e) {
-    console.error('[mail] delivery failed:', e.message);
-    db.prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?').run(email, purpose);
-    return bad(res, 'We could not send the email. Check the address and try again in a moment.', 502);
-  }
-  res.json({ ok: true, codeLength: CODE_LEN, ttlMinutes: CODE_TTL / 60e3 });
+  console.log(`[mail] ${purpose} code for ${email}: ${code} (dev fallback: no mail provider configured)`);
+  res.json({ ok: true, ...(PROD ? {} : { devCode: code }) });
 });
 
 app.post('/api/auth/code/verify', (req, res) => {
@@ -203,7 +168,7 @@ app.post('/api/auth/code/verify', (req, res) => {
   const row = db.prepare('SELECT * FROM email_codes WHERE email = ? AND purpose = ?').get(email, purpose);
   if (!row || row.expires_at < Date.now()) return bad(res, 'This code has expired. Request a new one.');
   if (row.attempts >= 5) return bad(res, 'Too many wrong codes. Request a new one.', 429);
-  if (!/^\d+$/.test(code) || !safeEq(codeHash(email, code), row.code_hash)) {
+  if (sha256(`${email}:${code}`) !== row.code_hash) {
     db.prepare('UPDATE email_codes SET attempts = attempts + 1 WHERE email = ? AND purpose = ?').run(email, purpose);
     return bad(res, 'That code is not right. Try again.');
   }
@@ -213,27 +178,34 @@ app.post('/api/auth/code/verify', (req, res) => {
     return authResponse(req, res, db.prepare('SELECT * FROM users WHERE email = ?').get(email));
   }
 
-  const { firstName, lastName, age, missionYears, acceptTerms } = req.body?.profile ?? {};
+  const { firstName, lastName, age, missionYears, acceptTerms, heightCm, weightKg, missionGoal } = req.body?.profile ?? {};
   const name = `${String(firstName || '').trim()} ${String(lastName || '').trim()}`.trim();
   const a = Number(age), y = Number(missionYears);
   if (String(firstName || '').trim().length < 1 || String(lastName || '').trim().length < 1) return bad(res, 'Please enter your name and surname.');
   if (!Number.isInteger(a) || a < MIN_AGE || a > 100) return bad(res, `Age must be between ${MIN_AGE} and 100.`);
   if (!(y >= 0.5 && y <= 10) || (y * 2) % 1 !== 0) return bad(res, 'Mission length must be 0.5–10 years in half-year steps.');
   if (!acceptTerms) return bad(res, 'You need to accept the Terms and Privacy Policy.');
+  // body measurements and mission goal are optional (older app versions don't send them)
+  const h = heightCm == null ? null : Number(heightCm), w = weightKg == null ? null : Number(weightKg);
+  if (h != null && !(h >= 120 && h <= 230)) return bad(res, 'Height must be between 120 and 230 cm.');
+  if (w != null && !(w >= 30 && w <= 250)) return bad(res, 'Weight must be between 30 and 250 kg.');
+  const GOAL_DESTS = ['iss', 'moon', 'mars', 'jupiter', 'deep'], GOAL_TASKS = ['repair', 'science', 'assembly', 'eva', 'piloting', 'medical', 'surface'];
+  const goal = missionGoal && typeof missionGoal === 'object' ? {
+    dest: GOAL_DESTS.includes(missionGoal.dest) ? missionGoal.dest : null,
+    tasks: Array.isArray(missionGoal.tasks) ? [...new Set(missionGoal.tasks.filter(t => GOAL_TASKS.includes(t)))] : [],
+  } : null;
+  const goalJson = goal && (goal.dest || goal.tasks.length) ? JSON.stringify(goal) : null;
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return bad(res, 'This email already has an account.', 409);
-  const { sex, heightCm, weightKg } = req.body?.profile ?? {};
-  const bodyGiven = sex != null || heightCm != null || weightKg != null;
   const dob = `${new Date().getUTCFullYear() - a}-01-01`; // only age is collected; store an approximate birth date
-  let user;
-  try { user = tx(() => {
+  const user = tx(() => {
     db.prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?').run(email, purpose);
-    const { lastInsertRowid: id } = db.prepare('INSERT INTO users (email, name, password_hash, dob, role, mission, environment, mission_years) VALUES (?,?,?,?,?,?,?,?)')
-      .run(email, name.slice(0, 80), '!', dob, 'astronaut', `${y}-year mission`, envForYears(y), y);
+    const { lastInsertRowid: id } = db.prepare('INSERT INTO users (email, name, password_hash, dob, role, mission, environment, mission_years, height_cm, weight_kg, mission_goal) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(email, name.slice(0, 80), '!', dob, 'astronaut', `${y}-year mission`, envForYears(y), y, h, w, goalJson);
     const c = db.prepare('INSERT INTO consents (user_id, kind, version) VALUES (?,?,?)');
     ['terms', 'privacy', 'health_data'].forEach(k => c.run(id, k, LEGAL_VERSION));
-    if (bodyGiven) setProfile(id, { sex, height_cm: Number(heightCm), weight_kg: Number(weightKg), activity: 'moderate', aim: 'maintain' });   // throws 400 -> whole sign-up rolls back
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  }); } catch (e) { if (e.status) return bad(res, e.message, e.status); throw e; }
+  });
+  seedDemo(user.id);
   authResponse(req, res, user);
 });
 
@@ -309,29 +281,14 @@ app.delete('/api/account', requireAuth, (req, res) => {
 });
 
 // ------------------------------------------------------------------ health data
-app.get('/api/dashboard', requireAuth, (req, res) => res.json(dashboard(req.user.id, asOfOf(req))));
+app.get('/api/dashboard', requireAuth, (req, res) => res.json(dashboard(req.user.id)));
 
 app.get('/api/metrics/:key', requireAuth, (req, res) => {
   const key = req.params.key;
   if (!METRICS[key]) return bad(res, 'Unknown metric.', 404);
-  const days = Math.min(120, Math.max(3, Number(req.query.days) || 30));
-  const asOf = asOfOf(req);
-  const recent = db.prepare('SELECT id, value, value2, source, note, recorded_at FROM measurements WHERE user_id = ? AND metric = ? AND recorded_at <= ? ORDER BY recorded_at DESC LIMIT 20').all(req.user.id, key, toSql(new Date(asOf)));
-  res.json({ info: { ...METRICS[key], evidence: withEvidence(key) }, snapshot: metricSnapshot(req.user.id, key, asOf), series: series(req.user.id, key, days, asOf), recent });
-});
-
-/** Scenario replay metadata: is a scripted scenario loaded, its time span, and the (normally hidden) ground truth. */
-app.get('/api/scenario', requireAuth, (req, res) => {
-  const real = osdrReplayMeta(req.user.id);
-  if (real) return res.json(real);
-  const row = db.prepare(`SELECT MIN(recorded_at) a, MAX(recorded_at) b FROM measurements WHERE user_id = ? AND source = 'scenario'`).get(req.user.id);
-  if (!row?.a) return res.json({ active: false, ...SCENARIO });
-  const start = parseTs(row.a).getTime(), end = parseTs(row.b).getTime();
-  const d0 = Date.UTC(new Date(start).getUTCFullYear(), new Date(start).getUTCMonth(), new Date(start).getUTCDate());
-  res.json({
-    active: true, ...SCENARIO, start: new Date(d0).toISOString(), end: new Date(end).toISOString(),
-    events: TRUTH.map(t => ({ id: t.id, label: t.label, metric: t.metric, system: t.system, kind: t.kind, day: t.onset, date: new Date(d0 + t.onset * DAY_MS).toISOString().slice(0, 10) })),
-  });
+  const days = Math.min(90, Math.max(3, Number(req.query.days) || 30));
+  const recent = db.prepare('SELECT id, value, value2, source, note, recorded_at FROM measurements WHERE user_id = ? AND metric = ? ORDER BY recorded_at DESC LIMIT 20').all(req.user.id, key);
+  res.json({ info: METRICS[key], snapshot: metricSnapshot(req.user.id, key), series: series(req.user.id, key, days), recent });
 });
 
 const ingestOne = (userId, m, source) => {
@@ -384,7 +341,7 @@ app.post('/api/checkins', requireAuth, (req, res) => {
 });
 
 // ------------------------------------------------------------------ plan
-app.get('/api/plan', requireAuth, (req, res) => { const t = asOfOf(req); res.json(adaptivePlan(req.user.id, dayOf(t), t)); });
+app.get('/api/plan', requireAuth, (req, res) => res.json(adaptivePlan(req.user.id)));
 
 app.post('/api/plan/tasks/:key/toggle', requireAuth, (req, res) => {
   const plan = adaptivePlan(req.user.id);
@@ -406,25 +363,43 @@ app.put('/api/plan', requireAuth, (req, res) => {
 
 // ------------------------------------------------------------------ flight-surgeon report
 app.get('/api/report', requireAuth, (req, res) => {
-  const asOf = asOfOf(req);
-  const d = dashboard(req.user.id, asOf);
-  const flagged = Object.values(d.metrics).filter(m => m.status === 'amber' || m.status === 'red');
-  const refIds = [...new Set(flagged.flatMap(m => METRICS[m.key].evidence?.refs ?? []))];
-  const synthetic = Object.values(d.metrics).some(m => ['demo', 'scenario'].includes(m.source));
-  const realNasa = Object.values(d.metrics).some(m => m.source === 'nasa-osdr');
+  const d = dashboard(req.user.id);
   const lines = [
-    `ASTRA crew health report — ${req.user.name} · ${req.user.mission}`,
-    `As of ${d.asOf} · Readiness ${d.readiness}/100${synthetic ? ' · SYNTHETIC DEMO DATA' : ''}${realNasa ? ` · REAL NASA OSDR DATA (${I4.study}, dates shifted)` : ''}`, '',
-    'SYSTEMS', ...d.systems.map(s => `  [${s.status.toUpperCase()}] ${s.label}${s.reasons.length ? ' — ' + s.reasons.map(r => r.label + (r.early ? ' (early drift)' : '')).join(', ') : ''}`), '',
-    'LATEST INDICATORS', ...Object.values(d.metrics).filter(m => m.value != null).map(m => `  ${m.label}: ${m.value}${m.value2 != null ? '/' + m.value2 : ''} ${m.unit} (${m.status}${m.early ? ', EARLY DRIFT' : ''}${m.deviation != null ? `, ${m.deviation > 0 ? '+' : ''}${m.deviation}% vs baseline` : ''}) · confidence ${m.confidence.level} · ${m.source} · ${m.recordedAt}`), '',
+    `HMSC crew health report — ${req.user.name} · ${req.user.mission}`,
+    `Generated ${new Date().toISOString()} · Readiness ${d.readiness}/100`, '',
+    'SYSTEMS', ...d.systems.map(s => `  [${s.status.toUpperCase()}] ${s.label}${s.reasons.length ? ' — ' + s.reasons.map(r => r.label).join(', ') : ''}`), '',
+    'LATEST INDICATORS', ...Object.values(d.metrics).filter(m => m.value != null).map(m => `  ${m.label}: ${m.value}${m.value2 != null ? '/' + m.value2 : ''} ${m.unit} (${m.status}${m.deviation != null ? `, ${m.deviation > 0 ? '+' : ''}${m.deviation}% vs baseline` : ''}) · ${m.source} · ${m.recordedAt}`), '',
     'ALERTS', ...(d.alerts.length ? d.alerts.map(a => `  [${a.level.toUpperCase()}] ${a.title}: ${a.body}`) : ['  none']), '',
-    d.checkin ? `Last check-in: mood ${d.checkin.mood}, symptoms: ${d.checkin.symptoms.join(', ') || 'none'}` : 'No check-in yet.', '',
-    'EVIDENCE BASIS (for flagged indicators)', ...(refIds.length ? refIds.map(id => `  [${id}] ${REFERENCES[id].cite}`) : ['  none flagged']), '',
-    'Method: personal baseline = median of first 14 days; early drift = 7-day median ≥3 robust SE worse than baseline, ≥ minimum % change, and consistent 14-day trend. Thresholds are defaults — flight-surgeon limits override.',
-    'Astra supports self-monitoring and escalation. It does not diagnose or prescribe and is not a medical device.',
+    d.checkin ? `Last check-in: mood ${d.checkin.mood}, symptoms: ${d.checkin.symptoms.join(', ') || 'none'}` : 'No check-in yet.',
   ];
   res.json({ text: lines.join('\n') });
 });
+
+// ------------------------------------------------------------------ health assistant (AI tab)
+const companionGate = (req, res) => {
+  if (!rateLimit(`comp:${req.user.id}`, 60, 60 * 60e3)) { bad(res, 'Too many messages this hour. Try again later.', 429); return false; }
+  if (!companionConfigured()) { bad(res, 'The companion SI is not configured on this server (no ANTHROPIC_API_KEY).', 503); return false; }
+  return true;
+};
+const companionFail = (res, e) => {
+  if (e && !e.headers && [400, 413, 503].includes(e.status)) return bad(res, e.message, e.status); // our own validation / not-configured errors (provider errors carry .headers)
+  const s = e?.status;
+  if (s === 401 || s === 403) return bad(res, 'The companion SI key was rejected by the provider.', 503);
+  if (s === 429) return bad(res, 'The companion SI is busy. Try again in a minute.', 429);
+  console.error('companion error', s, e?.message);
+  return bad(res, 'The companion SI could not answer right now.', 502);
+};
+app.post('/api/assistant', requireAuth, async (req, res) => {
+  if (!companionGate(req, res)) return;
+  try { res.json(await assistantReply({ ...(req.body ?? {}), background: aiSummary(req.user.id) })); } catch (e) { companionFail(res, e); }
+});
+
+// ------------------------------------------------------------------ flight-surgeon console + astronaut background
+mountAdmin(app);
+mountBackground(app);
+mountCam(app, PORT);
+mountTeam(app);
+mountFace(app, authResponse);
 
 // ------------------------------------------------------------------ integrations
 app.get('/api/integrations', requireAuth, (req, res) => {
@@ -433,9 +408,6 @@ app.get('/api/integrations', requireAuth, (req, res) => {
     providers: [
       { key: 'whoop', name: 'WHOOP', kind: 'Wearable', status: rows.whoop?.status ?? 'disconnected', lastSync: rows.whoop?.last_sync ?? null, available: whoopConfigured(), metrics: ['recovery', 'hrv', 'rhr', 'spo2', 'sleep', 'strain', 'weight'] },
       { key: 'demo', name: 'Demo crew dataset', kind: 'Synthetic', status: rows.demo?.status ?? 'disconnected', lastSync: rows.demo?.last_sync ?? null, available: true, metrics: Object.keys(METRICS) },
-      { key: 'scenario', name: 'Mars-transit replay scenario', kind: 'Synthetic', status: rows.scenario?.status ?? 'disconnected', lastSync: rows.scenario?.last_sync ?? null, available: true, note: '120 scripted days with 4 hidden problems — use the mission replay on Today', metrics: Object.keys(METRICS) },
-      { key: 'nasa-osdr', name: 'NASA OSDR · Inspiration4 labs', kind: 'Real NASA data', status: rows['nasa-osdr']?.status ?? 'disconnected', lastSync: rows['nasa-osdr']?.last_sync ?? null, available: true, note: 'Complete blood counts, OSD-569 (pre/post-flight, no in-flight samples)', metrics: ['hgb', 'wbc', 'lymph', 'plt'] },
-      { key: 'apple-health', name: 'Apple Health · Apple Watch', kind: 'Wearable via export', status: rows['apple-health']?.status ?? 'disconnected', lastSync: rows['apple-health']?.last_sync ?? null, available: true, note: 'Import the Health app export (web). Live iPhone sync needs a native build — not included yet.', metrics: ['rhr', 'hrv', 'spo2', 'sleep', 'weight', 'bp', 'temp', 'exercise'] },
       { key: 'nasa-lab', name: 'NASA lab results', kind: 'Clinical feed', status: 'ready', available: false, note: 'Uses POST /api/ingest when NASA data access is granted', metrics: ['ntx', 'vitd'] },
       { key: 'dosimeter', name: 'Station dosimeter', kind: 'Environment', status: 'ready', available: false, note: 'Uses POST /api/ingest', metrics: ['radiation', 'co2'] },
       { key: 'astroskin', name: 'Bio-Monitor / Astroskin', kind: 'Smart garment', status: 'planned', available: false, metrics: ['rhr', 'spo2', 'bp', 'temp'] },
@@ -466,65 +438,6 @@ app.post('/api/integrations/whoop/sync', requireAuth, async (req, res) => {
 app.delete('/api/integrations/whoop', requireAuth, async (req, res) => { await disconnectWhoop(req.user.id); res.json({ ok: true }); });
 app.post('/api/integrations/demo', requireAuth, (req, res) => { clearDemo(req.user.id); seedDemo(req.user.id); res.json({ ok: true }); });
 app.delete('/api/integrations/demo', requireAuth, (req, res) => { clearDemo(req.user.id); res.json({ ok: true }); });
-app.post('/api/integrations/scenario', requireAuth, (req, res) => { clearDemo(req.user.id); clearScenario(req.user.id); seedScenario(req.user.id); res.json({ ok: true }); });
-app.post('/api/integrations/osdr', requireAuth, (req, res) => {
-  const crew = I4.crew.includes(req.body?.crew) ? req.body.crew : 'C001';
-  clearDemo(req.user.id); clearScenario(req.user.id); clearOsdr(req.user.id);
-  res.json({ ok: true, ...seedOsdrI4(req.user.id, crew) });
-});
-app.delete('/api/integrations/osdr', requireAuth, (req, res) => { clearOsdr(req.user.id); res.json({ ok: true }); });
-app.delete('/api/integrations/scenario', requireAuth, (req, res) => { clearScenario(req.user.id); res.json({ ok: true }); });
-
-/** Apple Health: compact records extracted from the user's export (client-side) -> daily Astra measurements. Idempotent. */
-app.post('/api/integrations/apple-health/batch', requireAuth, (req, res) => {
-  const samples = req.body?.samples;
-  if (!Array.isArray(samples) || !samples.length) return bad(res, 'samples[] required.');
-  if (samples.length > 150000) return bad(res, 'Too many samples (max 150,000). Import fewer days.');
-  const { rows, used, skipped } = normalizeRecords(samples, { days: Number(req.body?.days) || 120 });
-  if (!rows.length) return bad(res, 'No usable Apple Health records found in the selected period.');
-  const perMetric = saveAppleHealth(req.user.id, rows);
-  res.json({ ok: true, records: used, skipped, days: new Set(rows.map(r => r.day)).size, perMetric });
-});
-app.delete('/api/integrations/apple-health', requireAuth, (req, res) => { clearAppleHealth(req.user.id); res.json({ ok: true }); });
-
-
-// ------------------------------------------------------------------ Food & calories
-const foodDay = req => (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day || req.body?.day || '')) ? String(req.query.day || req.body.day) : dayOf(Date.now()));
-const foodErr = (res, e) => (e.status ? res.status(e.status).json({ error: e.message }) : (console.error(e), res.status(500).json({ error: 'Something went wrong.' })));
-app.get('/api/food', requireAuth, (req, res) => res.json(daySummary(req.user.id, foodDay(req))));
-app.get('/api/profile/body', requireAuth, (req, res) => res.json({ profile: getProfile(req.user.id) }));
-app.put('/api/profile/body', requireAuth, (req, res) => { try { res.json({ profile: setProfile(req.user.id, req.body || {}) }); } catch (e) { foodErr(res, e); } });
-const isDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
-app.get('/api/goals', requireAuth, (req, res) => res.json(goalsFor(req.user.id, isDay(req.query.day) ? String(req.query.day) : dayOf(Date.now()))));
-app.post('/api/daily', requireAuth, (req, res) => { try { const day = isDay(req.body?.day) ? req.body.day : dayOf(Date.now()); res.json({ saved: saveDaily(req.user.id, day, req.body || {}), goals: goalsFor(req.user.id, day) }); } catch (e) { foodErr(res, e); } });
-app.put('/api/profile/data-source', requireAuth, (req, res) => {
-  if (req.body?.source !== 'manual') return bad(res, 'Apple Health and WHOOP are set by importing or connecting them.');
-  db.prepare("UPDATE users SET data_source='manual' WHERE id=? AND data_source IS NULL").run(req.user.id);
-  res.json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
-});
-app.get('/api/planner', requireAuth, (req, res) => res.json({ saved: getPlan(req.user.id), aiAvailable: aiConfigured(), provider: PROVIDER_LABEL[llmProvider()] ?? null }));
-app.post('/api/planner', requireAuth, async (req, res) => {
-  if (req.body?.useAi === true && !rateLimit(`planner:${req.user.id}`, 6, 60 * 60e3)) return bad(res, 'You have made several AI plans this hour. Try again later.', 429);
-  try { res.json(await createPlan(req.user.id, req.body || {})); } catch (e) { foodErr(res, e); }
-});
-app.get('/api/workouts', requireAuth, (req, res) => res.json({ workouts: listWorkouts(req.user.id) }));
-app.post('/api/workouts', requireAuth, (req, res) => { try { addWorkout(req.user.id, dayOf(Date.now()), req.body || {}); res.json({ workouts: listWorkouts(req.user.id) }); } catch (e) { foodErr(res, e); } });
-app.get('/api/food/photo/status', requireAuth, (_req, res) => res.json({ available: aiConfigured(), provider: PROVIDER_LABEL[llmProvider()] ?? null }));
-app.post('/api/food/photo', requireAuth, async (req, res) => { try { res.json(await estimateFromPhoto(req.body || {})); } catch (e) { foodErr(res, e); } });
-app.get('/api/food/search', requireAuth, async (req, res) => res.json({ results: await searchFoods(req.query.q) }));
-app.post('/api/food', requireAuth, (req, res) => { try { addFood(req.user.id, foodDay(req), req.body || {}); res.json(daySummary(req.user.id, foodDay(req))); } catch (e) { foodErr(res, e); } });
-app.delete('/api/food/:id', requireAuth, (req, res) => { deleteFood(req.user.id, Number(req.params.id)); res.json(daySummary(req.user.id, foodDay(req))); });
-app.put('/api/food/goal', requireAuth, (req, res) => { try { setGoal(req.user.id, req.body?.kcal, req.body?.protein); res.json(daySummary(req.user.id, foodDay(req))); } catch (e) { foodErr(res, e); } });
-
-// ------------------------------------------------------------------ Ask Astra (grounded helper)
-app.post('/api/assistant', requireAuth, async (req, res) => {
-  if (!rateLimit(`ai:${req.user.id}`, 30, 10 * 60e3)) return bad(res, 'Slow down a little — try again in a few minutes.', 429);
-  const question = String(req.body?.question || '').trim();
-  if (question.length < 2) return bad(res, 'Type a question first.');
-  const ctx = buildContext(req.user.id, asOfOf(req));
-  const r = await askAssistant({ question, history: Array.isArray(req.body?.history) ? req.body.history : [], ctx, consent: req.body?.aiConsent === true });
-  res.json({ ...r, aiAvailable: aiConfigured(), references: ctx.references, disclaimer: 'Astra supports self-monitoring and escalation. It does not diagnose or prescribe and is not a medical device.' });
-});
 
 app.use('/api', (_req, res) => bad(res, 'Not found.', 404));
 
@@ -535,9 +448,23 @@ if (existsSync(pub)) {
   app.get('/{*splat}', (_req, res) => res.sendFile(resolve(pub, 'index.html')));
 }
 
-app.use((err, _req, res, _next) => { console.error(err); res.status(500).json({ error: 'Something went wrong.' }); });
+app.use((err, _req, res, _next) => {
+  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'That upload is too large (files up to 700 KB).' });
+  if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid request body.' });
+  console.error(err); res.status(500).json({ error: 'Something went wrong.' });
+});
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  app.listen(PORT, () => { console.log(`[mail] provider: ${mailProvider()}${mailConfigured() ? '' : PROD ? ' — NOT CONFIGURED: sign-up and log-in codes cannot be sent' : ' — dev mode, codes are shown in the log'}`);
-    console.log(`ASTRA API on http://localhost:${PORT}  (WHOOP ${whoopConfigured() ? 'configured' : 'not configured — demo mode'})`); });
+  startWhoopAutoSync();
+  attachRtc(app.listen(PORT, () => console.log(`HMSC API on http://localhost:${PORT}  (WHOOP ${whoopConfigured() ? 'configured' : 'not configured — demo mode'})`)));
+  // Local https (self-signed, see scripts/make-cert.sh): phones only allow the camera on https pages.
+  const HTTPS_PORT = Number(process.env.HTTPS_PORT || 4443), key = resolve(here, '../certs/key.pem'), cert = resolve(here, '../certs/cert.pem');
+  if (existsSync(key) && existsSync(cert)) {
+    const secure = https.createServer({ key: readFileSync(key), cert: readFileSync(cert) }, app);
+    attachRtc(secure);
+    secure.listen(HTTPS_PORT, () => {
+      const lan = Object.values(networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address);
+      console.log(`HMSC https on https://localhost:${HTTPS_PORT}  ${lan.map(a => `https://${a}:${HTTPS_PORT}`).join('  ')}`);
+    });
+  } else console.log('No https certificate: run "npm run cert" so a phone can use the camera.');
 }

@@ -2,29 +2,30 @@ import { Platform } from 'react-native';
 
 /** Palette sampled from the copper-ring reference: warm stone greys, bronze gradient, coral accent. */
 export const C = {
-  bg: '#F1EFEC',
-  bg2: '#E7E3DE',
-  card: '#FFFFFF',
-  soft: '#F6F4F1',
-  ink: '#141312',
-  ink2: '#5E5853',
-  ink3: '#A19A93',
-  line: '#E7E2DC',
-  coral: '#EE6C4D',
-  coral2: '#F49A7F',
-  coralSoft: '#F8C7B8',
-  coralTint: '#FCE9E2',
-  green: '#4FAE72',
-  greenTint: '#E3F2E8',
-  amber: '#E39B2D',
-  amberTint: '#FBEFD9',
-  red: '#DF4A36',
-  redTint: '#FBE1DC',
-  bronze: ['#ECE7E2', '#C9B3A3', '#8E6F5C', '#4C372C'] as const,
-  copper: '#C98466',
+  // re-tinted to Copper Horizon so every older screen (metric detail, sources, log, report, legal) matches the crew app
+  bg: '#F7EEE8',
+  bg2: '#F2E2D9',
+  card: '#FFFDFB',
+  soft: '#F6E4D9',
+  ink: '#2B1E18',
+  ink2: '#6E5A50',
+  ink3: '#A8958B',
+  line: '#EEDDD3',
+  coral: '#B8693F',
+  coral2: '#E3B79E',
+  coralSoft: '#E3B79E',
+  coralTint: '#F6E4D9',
+  green: '#5C9A6E',
+  greenTint: '#E4F0E6',
+  amber: '#D69A3F',
+  amberTint: '#F8EBD3',
+  red: '#C9553B',
+  redTint: '#F8DFD8',
+  bronze: ['#F6E4D9', '#E3B79E', '#B8693F', '#5A3424'] as const,
+  copper: '#B8693F',
 };
 
-/** Astra "Copper Horizon" palette — sampled from the gradient / Mars references. */
+/** Celeste "Copper Horizon" palette — sampled from the gradient / Mars references. */
 export const A = {
   sand: '#F8EEE8',
   sand2: '#F2E2D9',
@@ -40,11 +41,14 @@ export const A = {
   card: '#FFFFFF',
 };
 
+/** Geist for UI and display, Geist Mono for kickers, units and instrument read-outs. */
 export const F = {
-  r: 'InterTight_400Regular',
-  m: 'InterTight_500Medium',
-  sb: 'InterTight_600SemiBold',
-  b: 'InterTight_700Bold',
+  r: 'Geist_400Regular',
+  m: 'Geist_500Medium',
+  sb: 'Geist_600SemiBold',
+  b: 'Geist_700Bold',
+  mono: 'GeistMono_400Regular',
+  monoM: 'GeistMono_500Medium',
 };
 
 export type Status = 'green' | 'amber' | 'red' | 'none';

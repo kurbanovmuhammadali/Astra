@@ -1,5 +1,5 @@
 /**
- * Astra "Copper Horizon" building blocks used by the intro, onboarding and home screens.
+ * Celeste "Copper Horizon" building blocks used by the intro, onboarding and home screens.
  * Visual language: warm sand surfaces, copper gradient, white round buttons, copper pills.
  * Everything here is animated: springs on press, glow on focus, pops on success.
  */
@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Check, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { A, F } from './theme';
 import { T } from './ui';
 import { EASE_OUT, MotionScreen, Reveal, native, useEntrance } from './motion';
@@ -22,6 +22,18 @@ export const IMG = {
   envelope: require('../assets/astra/envelope.png'),
   wave: require('../assets/astra/wave.png'),
 };
+/** The user's space art (2026-11-14) for in-app screens; registration keeps the original ship and Mars. */
+export const SPACE = {
+  earth: require('../assets/space/earth.png'),
+  mars: require('../assets/space/mars.png'),
+  jupiter: require('../assets/space/jupiter.png'),
+  ship: require('../assets/space/ship.png'),
+  deep: require('../assets/space/deep-space.jpg'), // the user's deep-space nebula (2000×678)
+  deepRatio: 2000 / 678,
+  shipRatio: 360 / 311,
+  shipNose: -36, // degrees: the ship's nose points up-right in the artwork
+};
+export const GLASS_BODY = { src: require('../assets/body/glass.png'), ratio: 478 / 1291 };
 /** Natural aspect ratios (width / height) of the images above. */
 export const RATIO = { ship: 900 / 543, body: 900 / 857, envelope: 791 / 685, wave: 900 / 458, mars: 852 / 1846 };
 
@@ -38,9 +50,9 @@ export function Star({ size = 20, color = A.copper }: { size?: number; color?: s
 }
 export function AstraLogo({ color = A.ink, star = A.copper, size = 18 }: { color?: string; star?: string; size?: number }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }} accessibilityRole="header" accessibilityLabel="Astra">
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }} accessibilityRole="header" accessibilityLabel="Celeste">
       <Star size={size} color={star} />
-      <T size={size} weight="sb" color={color} style={{ letterSpacing: 1.2 }}>ASTRA</T>
+      <T size={size} weight="sb" color={color} style={{ letterSpacing: 1.2 }}>CELESTE</T>
     </View>
   );
 }
@@ -116,7 +128,7 @@ export const shadowCopper = Platform.select<ViewStyle>({
 
 // ----------------------------------------------------------------------------- form bits
 /** Progress dashes; the current one fills in when the screen appears. */
-export function Steps({ n, of = 8, light }: { n: number; of?: number; light?: boolean }) {
+export function Steps({ n, of = 7, light }: { n: number; of?: number; light?: boolean }) {
   const fill = useEntrance(700, 250);
   const offC = light ? 'rgba(255,255,255,0.35)' : 'rgba(43,30,24,0.14)';
   const onC = light ? '#fff' : A.copper;
@@ -208,6 +220,9 @@ export function CheckRow({ checked, onChange, children }: { checked: boolean; on
   );
 }
 
+/** Lets a form child scroll the form (e.g. bring an opened option list into view). */
+export const FormScroll = React.createContext<{ toEnd: () => void }>({ toEnd: () => {} });
+
 /** Light sand screen with a soft copper wave, cascading content and back / next round buttons (sign-up forms). */
 export function FormShell({ step, title, sub, children, onBack, onNext, nextDisabled, nextLoading, nextLabel, top }: {
   step?: number; title: string; sub?: string; children: React.ReactNode; onBack?: () => void; onNext?: () => void;
@@ -215,9 +230,11 @@ export function FormShell({ step, title, sub, children, onBack, onNext, nextDisa
 }) {
   const insets = useSafeAreaInsets();
   const wave = useEntrance(1400);
+  const scroll = useRef<ScrollView>(null);
+  const ctx = useRef({ toEnd: () => setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 280) }).current;
   let i = 0;
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: A.sand }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: A.sand, overflow: 'hidden' }}>
       <LinearGradient colors={['#FBF2EE', A.sand, '#F3E3DA']} locations={[0, 0.55, 1]} style={{ position: 'absolute', inset: 0 } as any} />
       <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -40, right: -40, bottom: 0, transform: [{ translateY: wave.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }, { translateX: wave.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }] }}>
         <Svg width="100%" height={180} viewBox="0 0 400 180" preserveAspectRatio="none">
@@ -226,13 +243,16 @@ export function FormShell({ step, title, sub, children, onBack, onNext, nextDisa
         </Svg>
       </Animated.View>
       <MotionScreen>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 22, paddingHorizontal: 24, paddingBottom: 130 + insets.bottom, width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+        <FormScroll.Provider value={ctx}>
+        <ScrollView ref={scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 22, paddingHorizontal: 24, paddingBottom: 130 + insets.bottom, width: '100%', maxWidth: 520, alignSelf: 'center' }}>
           {step ? <Reveal i={i++}><Steps n={step} /></Reveal> : null}
           {top ? <Reveal i={i++} scale>{top}</Reveal> : null}
           <Reveal i={i++}><T size={32} weight="sb" color={A.ink} style={{ marginTop: step ? 26 : 8, letterSpacing: -0.6, lineHeight: 37 }}>{title}</T></Reveal>
           {sub ? <Reveal i={i++}><T size={15} color={A.ink2} style={{ marginTop: 10, lineHeight: 21 }}>{sub}</T></Reveal> : null}
           {React.Children.toArray(children).map((c, k) => <Reveal key={k} i={i + k}>{c}</Reveal>)}
         </ScrollView>
+        </FormScroll.Provider>
+        <LinearGradient pointerEvents="none" colors={['rgba(243,227,218,0)', 'rgba(243,227,218,0.94)']} locations={[0, 0.5]} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 120 + insets.bottom }} />
         <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 26, alignItems: 'center' }}>
           <Reveal i={3} from={30} style={{ width: '100%', maxWidth: 520, paddingHorizontal: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <RoundBtn dir="back" onPress={onBack} />
@@ -241,6 +261,136 @@ export function FormShell({ step, title, sub, children, onBack, onNext, nextDisa
         </View>
       </MotionScreen>
     </KeyboardAvoidingView>
+  );
+}
+
+// ----------------------------------------------------------------------------- measure field
+/**
+ * Height / weight field. Closed it is a button showing the value ("175 cm · 5′9″").
+ * Tapping it slides a ruler open underneath: scroll it by hand, the copper needle stays centred,
+ * a tick every unit, a number every 5. Each new value ticks (haptic) and the value above rolls.
+ */
+export function MeasureField({ label, min, max, value, onChange, unit, alt, open, onToggle }: {
+  label: string; min: number; max: number; value: number; onChange: (v: number) => void; unit: string; alt?: string;
+  open: boolean; onToggle: () => void;
+}) {
+  const reveal = useRef(new Animated.Value(open ? 1 : 0)).current;
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => {
+    if (open) setMounted(true);
+    Animated.spring(reveal, { toValue: open ? 1 : 0, useNativeDriver: false, speed: 14, bounciness: open ? 5 : 0 }).start(() => { if (!open) setMounted(false); });
+  }, [open]);
+  const roll = useRef(new Animated.Value(1)).current;
+  const prev = useRef(value);
+  useEffect(() => {
+    if (prev.current === value) return;
+    const dir = value > prev.current ? 1 : -1; prev.current = value;
+    roll.setValue(dir > 0 ? 0 : 2);
+    Animated.spring(roll, { toValue: 1, useNativeDriver: native, speed: 30, bounciness: 4 }).start();
+  }, [value]);
+  const border = reveal.interpolate({ inputRange: [0, 1], outputRange: ['rgba(227,183,158,0)', A.copperSoft] });
+  return (
+    <View style={{ marginTop: 18 }}>
+      <Animated.Text style={{ fontFamily: F.m, fontSize: 13.5, marginBottom: 8, marginLeft: 2, color: reveal.interpolate({ inputRange: [0, 1], outputRange: [A.ink, A.copperDeep] }) }}>{label}</Animated.Text>
+      <Animated.View style={{ borderRadius: 18, borderWidth: 1.2, borderColor: border, backgroundColor: 'rgba(255,255,255,0.94)', overflow: 'hidden' }}>
+        <Pressable onPress={() => { tick(); onToggle(); }} accessibilityRole="button" accessibilityLabel={`${label}, ${value} ${unit}`} accessibilityState={{ expanded: open }} accessibilityHint="Opens a scroll ruler"
+          style={{ height: 52, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center' }}>
+          <Animated.View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5, opacity: roll.interpolate({ inputRange: [0, 1, 2], outputRange: [0.4, 1, 0.4] }),
+            transform: [{ translateY: roll.interpolate({ inputRange: [0, 1, 2], outputRange: [8, 0, -8] }) }] }}>
+            <T size={17} weight="sb" color={A.ink}>{String(value)}</T>
+            <T size={14} weight="m" color={A.ink2}>{unit}</T>
+          </Animated.View>
+          {alt ? <T size={13} color={A.ink3} style={{ marginLeft: 8 }}>· {alt}</T> : null}
+          <View style={{ flex: 1 }} />
+          <Animated.View style={{ transform: [{ rotate: reveal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }] }}>
+            <ChevronDown size={18} color={A.copper} strokeWidth={2} />
+          </Animated.View>
+        </Pressable>
+        <Animated.View style={{ height: reveal.interpolate({ inputRange: [0, 1], outputRange: [0, 86] }), opacity: reveal }}>
+          {mounted ? <Ruler2 min={min} max={max} value={value} onChange={onChange} /> : null}
+        </Animated.View>
+      </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * Straight measuring ruler you grab and drag (finger or mouse), with momentum and a soft snap to whole units;
+ * the mouse wheel / trackpad also moves it. Ticks every unit, numbers every 5, copper needle fixed in the centre.
+ */
+function Ruler2({ min, max, value, onChange }: { min: number; max: number; value: number; onChange: (v: number) => void }) {
+  const U = 12; // px per unit
+  const [w, setW] = useState(0);
+  const pos = useRef(new Animated.Value(value)).current;     // continuous value under the needle
+  const cur = useRef(value);
+  const last = useRef(value);
+  const cb = useRef(onChange); cb.current = onChange;
+  const clamp = (v: number) => Math.min(max, Math.max(min, v));
+  useEffect(() => {
+    const id = pos.addListener(({ value: v }) => {
+      cur.current = v;
+      const s = Math.round(clamp(v));
+      if (s !== last.current) { last.current = s; tick(); cb.current(s); }
+    });
+    return () => pos.removeListener(id);
+  }, []);
+  const settle = () => Animated.spring(pos, { toValue: Math.round(clamp(cur.current)), useNativeDriver: false, speed: 14, bounciness: 4 }).start();
+  const start = useRef(value);
+  const pan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 2,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: () => { pos.stopAnimation(); start.current = cur.current; },
+    onPanResponderMove: (_, g) => { const v = start.current - g.dx / U; pos.setValue(v < min ? min - (min - v) * 0.3 : v > max ? max + (v - max) * 0.3 : v); },
+    onPanResponderRelease: (_, g) => {
+      const vel = -g.vx / U; // units per ms
+      if (Math.abs(g.vx) < 0.05 || cur.current < min || cur.current > max) { if (Math.abs(g.dx) < 3) { /* tap */ } return settle(); }
+      Animated.decay(pos, { velocity: Math.max(-1.6, Math.min(1.6, vel)), deceleration: 0.993, useNativeDriver: false }).start(settle);
+    },
+    onPanResponderTerminate: settle,
+  })).current;
+  // mouse wheel / trackpad on the web
+  const box = useRef<any>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !box.current) return;
+    const el = box.current as HTMLElement;
+    let t: any;
+    const on = (e: WheelEvent) => { e.preventDefault(); pos.stopAnimation(); pos.setValue(clamp(cur.current + (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) / U)); clearTimeout(t); t = setTimeout(settle, 140); };
+    el.addEventListener('wheel', on, { passive: false });
+    return () => el.removeEventListener('wheel', on);
+  }, [w]);
+  const n = max - min + 1;
+  const x = Animated.add(Animated.multiply(pos, -U), w / 2 + min * U); // left offset of the tick strip
+  return (
+    <View ref={box} onLayout={e => setW(e.nativeEvent.layout.width)} {...pan.panHandlers}
+      style={[{ height: 86, borderTopWidth: 1, borderTopColor: 'rgba(184,105,63,0.12)', overflow: 'hidden' }, Platform.OS === 'web' ? ({ cursor: 'grab', userSelect: 'none', touchAction: 'none' } as any) : null]}>
+      {w ? (
+        <Animated.View style={{ position: 'absolute', top: 0, left: 0, width: n * U, height: 86, flexDirection: 'row', transform: [{ translateX: Animated.add(x, -U / 2) }] }}>
+          {Array.from({ length: n }, (_, i) => {
+            const v = min + i, five = v % 5 === 0, ten = v % 10 === 0;
+            const near = pos.interpolate({ inputRange: [v - 6, v, v + 6], outputRange: [0, 1, 0], extrapolate: 'clamp' });
+            return (
+              <View key={v} style={{ width: U, height: 86, alignItems: 'center' }}>
+                <Animated.View style={{ marginTop: 14, width: ten ? 2 : 1.4, height: ten ? 26 : five ? 20 : 12, borderRadius: 1, backgroundColor: A.ink,
+                  opacity: near.interpolate({ inputRange: [0, 1], outputRange: [ten ? 0.42 : five ? 0.3 : 0.16, 0.85] }),
+                  transform: [{ scaleY: near.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] }) }] }} />
+                {five ? (
+                  <Animated.View style={{ position: 'absolute', top: 50, width: 44, alignItems: 'center', opacity: near.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
+                    transform: [{ scale: near.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.12] }) }] }}>
+                    <T size={12.5} weight="m" color={A.ink2}>{String(v)}</T>
+                  </Animated.View>
+                ) : null}
+              </View>
+            );
+          })}
+        </Animated.View>
+      ) : null}
+      <View pointerEvents="none" style={{ position: 'absolute', left: w / 2 - 1.5, top: 8, width: 3, height: 40, borderRadius: 2, backgroundColor: A.copper }} />
+      <View pointerEvents="none" style={{ position: 'absolute', left: w / 2 - 5, top: 4, width: 10, height: 10, borderRadius: 5, backgroundColor: A.copper, borderWidth: 2, borderColor: '#fff' }} />
+      <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,1)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 70 }} />
+      <LinearGradient pointerEvents="none" colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 70 }} />
+      <T size={11} color={A.ink3} style={{ position: 'absolute', right: 12, bottom: 6 }}>drag ↔</T>
+    </View>
   );
 }
 
@@ -368,11 +518,11 @@ export function RollingValue({ value, unit }: { value: string; unit: string }) {
     if (prev.current === value) return;
     prev.current = value;
     a.setValue(0.82);
-    Animated.spring(a, { toValue: 1, useNativeDriver: native, speed: 22, bounciness: 8 }).start();
+    Animated.timing(a, { toValue: 1, duration: 260, easing: EASE_OUT, useNativeDriver: native }).start();
   }, [value]);
   return (
     <View style={{ alignItems: 'center' }} accessibilityLiveRegion="polite">
-      <Animated.View style={{ opacity: a.interpolate({ inputRange: [0.82, 1], outputRange: [0.7, 1] }), transform: [{ translateY: a.interpolate({ inputRange: [0.82, 1], outputRange: [4, 0] }) }, { scale: a.interpolate({ inputRange: [0.82, 1], outputRange: [0.97, 1] }) }] }}>
+      <Animated.View style={{ opacity: a.interpolate({ inputRange: [0.82, 1], outputRange: [0.55, 1] }), transform: [{ translateY: a.interpolate({ inputRange: [0.82, 1], outputRange: [6, 0] }) }] }}>
         <T size={60} weight="m" color={A.ink} style={{ letterSpacing: -2.4, lineHeight: 64 }}>{value}</T>
       </Animated.View>
       <T size={13} color={A.ink2}>{unit}</T>

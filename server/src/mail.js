@@ -1,61 +1,51 @@
 /**
- * Outbound email. Providers (first match wins; force one with MAIL_PROVIDER=resend|smtp|none):
- *   RESEND_API_KEY  -> Resend HTTP API (https://resend.com) — no extra dependency
- *   SMTP_URL        -> any SMTP server via nodemailer, e.g. smtps://user:pass@smtp.example.com:465
- * MAIL_FROM sets the sender, e.g. "Astra <no-reply@yourdomain.com>" (the domain must be verified with your provider).
- * Resend's shared sender (onboarding@resend.dev, the default here) only delivers to the Resend account owner's own address.
+ * Email sending for the 4-digit verification code.
+ *
+ * Pick ONE provider with environment variables (read at call time, see .env.example):
+ *   - Resend API  : RESEND_API_KEY (+ MAIL_FROM)
+ *   - SMTP        : SMTP_HOST, SMTP_USER, SMTP_PASS (+ SMTP_PORT, MAIL_FROM), e.g. Gmail with an App Password
+ *   - MAIL_TRANSPORT=json : prints the message to the server console instead of sending (tests, offline demos)
+ * Nothing is sent anywhere unless one of these is configured.
  */
-let override = null;
-/** Test hook: replace delivery with fn({from,to,subject,text,html}). Pass null to restore. */
-export const setMailTransport = fn => { override = fn; };
+import nodemailer from 'nodemailer';
 
-export function mailProvider() {
-  if (override) return 'custom';
-  const forced = String(process.env.MAIL_PROVIDER || '').toLowerCase();
-  if (['resend', 'smtp', 'none'].includes(forced)) return forced;
-  if (process.env.RESEND_API_KEY) return 'resend';
-  if (process.env.SMTP_URL) return 'smtp';
-  return 'none';
+const env = k => process.env[k]?.trim();
+
+export const mailMode = () =>
+  env('RESEND_API_KEY') ? 'resend'
+  : env('SMTP_HOST') && env('SMTP_USER') && env('SMTP_PASS') ? 'smtp'
+  : env('MAIL_TRANSPORT') === 'json' ? 'json'
+  : null;
+export const mailConfigured = () => mailMode() !== null;
+
+const from = () => env('MAIL_FROM') || env('SMTP_USER') || 'HMSC <onboarding@resend.dev>';
+
+export function codeEmail(code, purpose) {
+  const what = purpose === 'login' ? 'log in to' : 'finish creating your account in';
+  const subject = `${code} is your HMSC code`;
+  const text = `Your HMSC verification code is ${code}.\n\nEnter it in the app to ${what} HMSC (Health Monitoring System Cometa). It expires in 10 minutes.\n\nIf you did not ask for this, you can ignore this email.`;
+  const html = `<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:420px;margin:auto;padding:24px;color:#2B1E18">
+<div style="font-weight:700;letter-spacing:2px;color:#B8693F">&#10022; HMSC</div>
+<p style="margin:18px 0 6px">Your verification code</p>
+<div style="font-size:38px;font-weight:700;letter-spacing:10px;background:#F6E4D9;border-radius:14px;padding:14px 18px;text-align:center">${code}</div>
+<p style="color:#6E5A50;font-size:14px;margin-top:16px">Enter it in the app to ${what} HMSC. It expires in 10 minutes. If you did not ask for this, ignore this email.</p>
+<p style="color:#A8958B;font-size:12px">Health Monitoring System Cometa · not a medical device</p></div>`;
+  return { subject, text, html };
 }
-export const mailConfigured = () => mailProvider() !== 'none';
 
 export async function sendMail({ to, subject, text, html }) {
-  const from = process.env.MAIL_FROM || 'Astra <onboarding@resend.dev>';
-  const p = mailProvider();
-  if (p === 'custom') return override({ from, to, subject, text, html });
-  if (p === 'resend') {
+  const mode = mailMode();
+  if (!mode) throw Object.assign(new Error('Email is not configured'), { code: 'MAIL_NOT_CONFIGURED' });
+  if (mode === 'resend') {
     const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: [to], subject, text, html }),
-      signal: AbortSignal.timeout(15_000),
+      method: 'POST', headers: { Authorization: `Bearer ${env('RESEND_API_KEY')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: from(), to: [to], subject, text, html }),
     });
-    if (!r.ok) throw new Error(`Resend rejected the message (${r.status}): ${(await r.text()).slice(0, 200)}`);
+    if (!r.ok) throw new Error(`Resend ${r.status}: ${(await r.text()).slice(0, 200)}`);
     return;
   }
-  if (p === 'smtp') {
-    const { default: nodemailer } = await import('nodemailer');
-    await nodemailer.createTransport(process.env.SMTP_URL).sendMail({ from, to, subject, text, html });
-    return;
-  }
-  throw new Error('No mail provider configured.');
-}
-
-export function verificationEmail(code, purpose, minutes = 10) {
-  const what = purpose === 'login' ? 'log in to' : 'finish creating your account on';
-  return {
-    subject: `Your Astra verification code: ${code}`,
-    text: `Your Astra code is ${code}\n\nEnter it to ${what} Astra. It expires in ${minutes} minutes and works once.\n\nIf you did not ask for this, ignore this email — nobody can use the code without access to this inbox. Astra will never ask you for it by phone or chat.`,
-    html: `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:420px;margin:auto;color:#2B1E18">
-<p style="font-size:13px;letter-spacing:.12em;color:#B8693F;font-weight:600">ASTRA</p>
-<p style="font-size:15px">Enter this code to ${what} Astra:</p>
-<p style="font-size:34px;letter-spacing:.35em;font-weight:700;margin:18px 0">${code}</p>
-<p style="font-size:13px;color:#6E5A50">It expires in ${minutes} minutes and works once. If you did not ask for it, ignore this email — nobody can use the code without access to this inbox. Astra will never ask for it by phone or chat.</p></div>`,
-  };
-}
-
-export function noticeEmail(kind) {
-  return kind === 'exists'
-    ? { subject: 'Astra: you already have an account', text: 'Someone (hopefully you) tried to create an Astra account with this email, but one already exists. Use "Log in" in the app instead. If this was not you, no action is needed.' }
-    : { subject: 'Astra sign-in attempt', text: 'Someone asked to log in to Astra with this email, but no account exists for it. If it was you, use "Get started" to create one. If not, you can ignore this email.' };
+  if (mode === 'json') { console.log(`[mail:json] to=${to} subject="${subject}"\n${text}`); return; }
+  const port = Number(env('SMTP_PORT') || 465);
+  const transport = nodemailer.createTransport({ host: env('SMTP_HOST'), port, secure: port === 465, auth: { user: env('SMTP_USER'), pass: env('SMTP_PASS') } });
+  await transport.sendMail({ from: from(), to, subject, text, html });
 }

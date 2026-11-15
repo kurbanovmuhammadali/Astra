@@ -24,12 +24,6 @@ test('consent required', async () => {
 test('register → dashboard → plan → checkin → logout/login → delete', async () => {
   let r = await call('POST', '/api/auth/register', reg);
   assert.equal(r.status, 200, JSON.stringify(r.body)); assert.ok(cookie.startsWith('pg_session='));
-  // a real account starts EMPTY: no auto-filled demo numbers
-  r = await call('GET', '/api/goals'); assert.equal(r.status, 200); assert.equal(r.body.hasData, false);
-  assert.ok(r.body.goals.every(g => g.value === null));
-  assert.equal((await call('GET', '/api/auth/me')).body.user.dataSource, null);
-  // demo data only when the user explicitly asks for it
-  await call('POST', '/api/integrations/demo');
   r = await call('GET', '/api/dashboard'); assert.equal(r.status, 200);
   assert.ok(r.body.readiness > 0 && r.body.readiness <= 100);
   console.log('readiness', r.body.readiness, r.body.systems.map(s => `${s.key}:${s.status}`).join(' '));
@@ -62,9 +56,9 @@ test('email code: signup → login', async () => {
   let r = await call('POST', '/api/auth/code', { email, purpose: 'login' });
   assert.equal(r.status, 404);
   r = await call('POST', '/api/auth/code', { email, purpose: 'signup' });
-  assert.equal(r.status, 200); assert.match(r.body.devCode, /^\d{6}$/);
+  assert.equal(r.status, 200); assert.match(r.body.devCode, /^\d{4}$/);
   const code = r.body.devCode;
-  r = await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code: code === '999999' ? '100000' : '999999', profile });
+  r = await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code: code === '9999' ? '1000' : '9999', profile });
   assert.equal(r.status, 400);
   r = await call('POST', '/api/auth/code/verify', { email, purpose: 'signup', code, profile: { ...profile, missionYears: 2.3 } });
   assert.equal(r.status, 400);

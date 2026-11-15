@@ -45,16 +45,26 @@ export async function exchangeCode(userId, code) {
     ON CONFLICT(user_id, provider) DO UPDATE SET status='connected', tokens=excluded.tokens`).run(userId, encrypt(t));
 }
 
+const refreshing = new Map(); // userId -> in-flight refresh (the three parallel sync calls must share ONE refresh: the old token dies after first use)
 async function accessToken(userId) {
   const row = db.prepare(`SELECT tokens FROM integrations WHERE user_id = ? AND provider = 'whoop'`).get(userId);
-  let t = decrypt(row?.tokens);
+  const t = decrypt(row?.tokens);
   if (!t) throw new Error('WHOOP is not connected.');
-  if (Date.now() > t.expires_at - 60e3) {
-    if (!t.refresh_token) throw new Error('WHOOP session expired. Reconnect.');
-    t = { ...(await tokenRequest({ grant_type: 'refresh_token', refresh_token: t.refresh_token, scope: SCOPES.join(' ') })), refresh_token: t.refresh_token };
-    db.prepare(`UPDATE integrations SET tokens = ? WHERE user_id = ? AND provider = 'whoop'`).run(encrypt(t), userId);
+  if (Date.now() <= t.expires_at - 60e3) return t.access_token;
+  if (!t.refresh_token) throw new Error('WHOOP session expired. Reconnect.');
+  if (!refreshing.has(userId)) {
+    refreshing.set(userId, (async () => {
+      try {
+        // WHOOP rotates refresh tokens: the one in the reply replaces the old one
+        const fresh = await tokenRequest({ grant_type: 'refresh_token', refresh_token: t.refresh_token, scope: SCOPES.join(' ') });
+        const next = { ...fresh, refresh_token: fresh.refresh_token || t.refresh_token };
+        db.prepare(`UPDATE integrations SET tokens = ? WHERE user_id = ? AND provider = 'whoop'`).run(encrypt(next), userId);
+        return next.access_token;
+      } catch { db.prepare(`UPDATE integrations SET status = 'error' WHERE user_id = ? AND provider = 'whoop'`).run(userId); throw new Error('WHOOP session expired. Reconnect WHOOP in Settings.'); }
+      finally { refreshing.delete(userId); }
+    })());
   }
-  return t.access_token;
+  return refreshing.get(userId);
 }
 
 async function getAll(userId, path, start, maxPages = 4) {
@@ -123,4 +133,17 @@ export async function disconnectWhoop(userId) {
     await fetch(`${API}/user/access`, { method: 'DELETE', headers: { Authorization: `Bearer ${at}` }, signal: AbortSignal.timeout(10000) });
   } catch { /* revoke best-effort */ }
   db.prepare(`DELETE FROM integrations WHERE user_id = ? AND provider = 'whoop'`).run(userId);
+}
+
+let autoTimer = null;
+/** Keeps every connected member's data fresh without them pressing Sync (WHOOP has no live stream; webhooks are not used). */
+export function startWhoopAutoSync(everyMs = 20 * 60e3) {
+  if (autoTimer || !whoopConfigured()) return;
+  const run = async () => {
+    for (const r of db.prepare(`SELECT user_id FROM integrations WHERE provider = 'whoop' AND status = 'connected'`).all()) {
+      try { await syncWhoop(r.user_id, 3); } catch (e) { console.error('[whoop] auto-sync failed for user', r.user_id, String(e.message).slice(0, 80)); }
+      await new Promise(ok => setTimeout(ok, 1500)); // stay far below the 100 requests/minute limit
+    }
+  };
+  autoTimer = setInterval(run, everyMs); autoTimer.unref?.(); setTimeout(run, 30e3).unref?.();
 }

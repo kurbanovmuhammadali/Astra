@@ -41,7 +41,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
       credentials: 'include',
     });
   } catch {
-    throw new ApiError('Cannot reach the Perigee server. Check your connection.', 0);
+    throw new ApiError('Cannot reach the HMSC server. Check your connection.', 0);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(data.error ?? `Request failed (${res.status})`, res.status);

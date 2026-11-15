@@ -1,49 +1,44 @@
 /**
- * Which AI provider the server uses, and a small Gemini client (plain HTTPS, no SDK).
- *  - GEMINI_API_KEY    -> Google Gemini      (GEMINI_MODEL, default "gemini-flash-latest")
- *  - ANTHROPIC_API_KEY -> Anthropic Claude   (ASTRA_AI_MODEL)
- *  - AI_PROVIDER=gemini|anthropic picks one when both keys are set; otherwise Gemini wins if its key exists.
- * The key travels in the x-goog-api-key header (never in the URL, so it cannot end up in logs). It is never sent to the browser.
- * Only readings or one photo are sent; never a name, e-mail or id.
+ * LLM providers behind one small interface.
+ *   - Gemini (Google AI): used when GEMINI_API_KEY is set. Model: GEMINI_MODEL (default "gemini-flash-latest").
+ *   - Claude (Anthropic): used by companion.js when only ANTHROPIC_API_KEY is set.
+ * Keys are read from the environment only and are never logged or returned to the app.
  */
-export const PROVIDER_LABEL = { gemini: 'Google Gemini', anthropic: 'Anthropic Claude' };
+const env = k => process.env[k]?.trim();
+export const geminiOn = () => !!env('GEMINI_API_KEY');
 
-export function llmProvider() {
-  const want = process.env.AI_PROVIDER;
-  if (want === 'gemini' && process.env.GEMINI_API_KEY) return 'gemini';
-  if (want === 'anthropic' && process.env.ANTHROPIC_API_KEY) return 'anthropic';
-  if (process.env.GEMINI_API_KEY) return 'gemini';
-  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
-  return null;
+const API = 'https://generativelanguage.googleapis.com/v1beta';
+
+/** Builds the Gemini generateContent request body (pure, unit-tested). */
+export function geminiBody({ system, messages, maxTokens = 700, json = false, images = [], thinkingOff = true }) {
+  const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+  if (images.length && contents.length) contents[contents.length - 1].parts.push(...images.map(i => ({ inlineData: { mimeType: i.mime, data: i.data } })));
+  return {
+    ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+    contents,
+    generationConfig: {
+      maxOutputTokens: Math.max(maxTokens * 3, 1500), // headroom: some models spend tokens thinking before they answer
+      ...(json ? { responseMimeType: 'application/json' } : {}),
+      ...(thinkingOff ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+    },
+  };
 }
 
-const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-export const geminiModel = () => process.env.GEMINI_MODEL || 'gemini-flash-latest';
-
-/**
- * messages: [{ role: 'user'|'assistant', content }]. image: { mediaType, data(base64) } is attached to the first user message.
- * Returns { text, blocked }. Throws on network or API errors (status carried on the error for the caller to map).
- */
-export async function geminiGenerate({ system, messages, image, json = false, maxTokens = 1200 }) {
-  const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.content) }] }));
-  if (image) contents.find(c => c.role === 'user')?.parts.unshift({ inline_data: { mime_type: image.mediaType, data: image.data } });
-  const body = {
-    contents,
-    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.3, ...(json ? { responseMimeType: 'application/json' } : {}) },
-    ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
-  };
-  const r = await fetch(`${BASE}/${encodeURIComponent(geminiModel())}:generateContent`, {
-    method: 'POST', signal: AbortSignal.timeout(30000),
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-    body: JSON.stringify(body),
-  });
+/** One Gemini call. Returns { text, refused }. Throws an error with .status mapped for the API layer. */
+export async function geminiCall(opts) {
+  const model = env('GEMINI_MODEL') || 'gemini-flash-latest';
+  const post = async body => fetch(`${API}/models/${model}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env('GEMINI_API_KEY') }, body: JSON.stringify(body) });
+  let r = await post(geminiBody(opts));
+  if (r.status === 400) { const t = await r.clone().text(); if (/thinking/i.test(t)) r = await post(geminiBody({ ...opts, thinkingOff: false })); } // model without a thinking budget
   if (!r.ok) {
-    const detail = (await r.text().catch(() => '')).slice(0, 200).replace(process.env.GEMINI_API_KEY || '\u0000', '[key]');
-    throw Object.assign(new Error(`Gemini ${r.status}: ${detail}`), { status: r.status });
+    const s = r.status === 401 || r.status === 403 ? 401 : r.status === 429 ? 429 : 502; // never pass Google's error text to the app
+    console.error('[gemini] HTTP', r.status);
+    throw Object.assign(new Error('Gemini request failed'), { status: s, headers: {} });
   }
   const j = await r.json();
-  const cand = j.candidates?.[0];
-  const text = (cand?.content?.parts ?? []).map(p => p.text ?? '').join('').trim();
-  const blocked = !!j.promptFeedback?.blockReason || cand?.finishReason === 'SAFETY' || !text;
-  return { text, blocked };
+  if (j.promptFeedback?.blockReason) return { text: '', refused: true };
+  const c = j.candidates?.[0];
+  const text = (c?.content?.parts ?? []).map(p => p.text ?? '').join('').trim();
+  return { text, refused: !text && ['SAFETY', 'PROHIBITED_CONTENT', 'RECITATION'].includes(c?.finishReason) };
 }
+

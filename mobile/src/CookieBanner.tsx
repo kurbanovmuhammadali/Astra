@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, usePathname } from 'expo-router';
 import { C, shadow } from './theme';
 import { Button, Row, T } from './ui';
 
@@ -9,8 +9,9 @@ const read = () => { try { return localStorage.getItem(KEY); } catch { return 'u
 
 export default function CookieBanner() {
   const [show, setShow] = useState(false);
+  const path = usePathname();
   useEffect(() => { if (Platform.OS === 'web' && !read()) setShow(true); }, []);
-  if (!show) return null;
+  if (!show || path.startsWith('/cam/') || path === '/camera') return null; // the phone camera page stays clean
   const choose = (v: string) => { try { localStorage.setItem(KEY, JSON.stringify({ v, essential: true, analytics: false, at: new Date().toISOString() })); } catch {} setShow(false); };
   return (
     <View style={{ position: 'absolute' as any, left: 16, right: 16, bottom: 16, alignItems: 'center', zIndex: 50 }} pointerEvents="box-none">

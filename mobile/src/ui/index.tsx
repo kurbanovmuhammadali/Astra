@@ -9,6 +9,7 @@ import Svg, { Circle, Line, Path, Rect, G, Defs, LinearGradient as SvgGrad, Stop
 import { Check, ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { C, F, R, shadow, statusColor, statusWord } from '../theme';
+import { Backdrop } from '../kit/page';
 
 // ----------------------------------------------------------------------------- text
 type TP = TextProps & { size?: number; weight?: keyof typeof F; color?: string; center?: boolean; style?: StyleProp<TextStyle> };
@@ -32,7 +33,7 @@ export function Screen({ children, scroll = true, bg = 'light', pad = true, bott
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {bg === 'bronze'
         ? <LinearGradient colors={C.bronze} locations={[0, 0.35, 0.72, 1]} style={StyleSheet.absoluteFill} />
-        : <LinearGradient colors={['#F6F5F3', '#EFECE8', '#E8E3DD']} style={StyleSheet.absoluteFill} />}
+        : <Backdrop />}
       {scroll ? <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{inner}</ScrollView> : inner}
     </View>
   );
@@ -185,7 +186,7 @@ export function Logo({ color = C.ink, size = 22 }: { color?: string; size?: numb
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Path fill="#B8693F" d="M12 1.5C12.9 8 16 11.1 22.5 12 16 12.9 12.9 16 12 22.5 11.1 16 8 12.9 1.5 12 8 11.1 11.1 8 12 1.5Z" />
       </Svg>
-      <T size={size * 0.95} weight="sb" color={color} style={{ letterSpacing: 1.2 }}>ASTRA</T>
+      <T size={size * 0.95} weight="sb" color={color} style={{ letterSpacing: 1.2 }}>CELESTE</T>
     </Row>
   );
 }
