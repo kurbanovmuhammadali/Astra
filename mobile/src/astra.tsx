@@ -4,7 +4,7 @@
  * Everything here is animated: springs on press, glow on focus, pops on success.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleProp, TextInput, TextInputProps, View, ViewStyle, PanResponder } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleProp, TextInput, TextInputProps, View, ViewStyle, PanResponder } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -48,10 +48,12 @@ export function Star({ size = 20, color = A.copper }: { size?: number; color?: s
     </Svg>
   );
 }
+export const LOGO_MARK = require('../assets/brand/logo-mark.png');
+/** The project logo (mission patch) with the CELESTE wordmark. */
 export function AstraLogo({ color = A.ink, star = A.copper, size = 18 }: { color?: string; star?: string; size?: number }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }} accessibilityRole="header" accessibilityLabel="Celeste">
-      <Star size={size} color={star} />
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} accessibilityRole="header" accessibilityLabel="Celeste">
+      <Image source={LOGO_MARK} style={{ width: size * 1.9, height: size * 1.9 }} resizeMode="contain" accessibilityIgnoresInvertColors />
       <T size={size} weight="sb" color={color} style={{ letterSpacing: 1.2 }}>CELESTE</T>
     </View>
   );

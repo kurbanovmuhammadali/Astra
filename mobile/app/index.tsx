@@ -10,5 +10,5 @@ export default function Index() {
   useEffect(() => { getFlag('introSeen').then(setIntroSeen); }, []);
   if (!ready || introSeen === null) return <PageSkeleton tabs={false} />;
   if (user) return <Redirect href="/today" />;
-  return <Redirect href={introSeen ? '/welcome' : '/intro'} />;
+  return <Redirect href={introSeen ? '/welcome' : '/intro'} />; // first visit: the opening film (/intro); /welcome itself also redirects there until it has been seen
 }

@@ -7,11 +7,15 @@ import { A } from '@/theme';
 import { T } from '@/ui';
 import { AstraLogo, Floaty, IMG, Pill, RATIO } from '@/astra';
 import { draft } from '@/onboarding';
+import { Redirect } from 'expo-router';
+import { getFlag } from '@/storage';
 
 const native = Platform.OS !== 'web';
 
 /** Welcome: the title rises in on its own, then slides up while the two paths fade in. */
 export default function Welcome() {
+  const [seen, setSeen] = React.useState<boolean | null>(null);
+  useEffect(() => { getFlag('introSeen').then(setSeen); }, []);
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const a = useRef(new Animated.Value(0)).current;   // title in
@@ -25,6 +29,8 @@ export default function Welcome() {
   }, []);
   const shipW = Math.min(W * 0.78, 420);
 
+  if (seen === false) return <Redirect href="/intro" />; // the opening film always comes first on a first visit
+  if (seen === null) return <View style={{ flex: 1, backgroundColor: A.sand }} />;
   return (
     <View style={{ flex: 1, backgroundColor: A.sand, overflow: 'hidden' }}>
       <MotionScreen still>
@@ -34,7 +40,7 @@ export default function Welcome() {
         <Image source={IMG.ship} style={{ width: shipW, height: shipW / RATIO.ship }} resizeMode="contain" />
       </Floaty>
 
-      <View style={{ position: 'absolute', top: insets.top + 16, left: 24 }}><AstraLogo color="#fff" star={A.copperSoft} /></View>
+      <View style={{ position: 'absolute', top: insets.top + 16, left: 24 }}><AstraLogo color="#fff" star={A.copperSoft} size={20} /></View>
 
       <View style={{ flex: 1, justifyContent: 'flex-end', paddingHorizontal: 24, paddingBottom: insets.bottom + 34, width: '100%', maxWidth: 520, alignSelf: 'center' }}>
         <Animated.View style={{ opacity: a, transform: [

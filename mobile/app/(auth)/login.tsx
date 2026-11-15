@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import { nav } from '@/motion';
 import { Press } from '@/astra';
 import { A } from '@/theme';
 import { T } from '@/ui';
-import { FormShell, Input, Star } from '@/astra';
+import { FormShell, Input, LOGO_MARK } from '@/astra';
 import { useDraft } from '@/onboarding';
 import { useAuth } from '@/auth';
 import { api } from '@/api';
@@ -42,7 +42,7 @@ export default function Login() {
   };
   return (
     <FormShell title="Log in" sub="Crew accounts are set up by your mission. Enter your email and we’ll send you a code."
-      top={<View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: A.copper, alignItems: 'center', justifyContent: 'center', marginTop: 12, marginBottom: 14 }}><Star size={30} color="#fff" /></View>}
+      top={<Image source={LOGO_MARK} style={{ width: 72, height: 72, marginTop: 12, marginBottom: 14, borderRadius: 18 }} resizeMode="contain" accessibilityLabel="Celeste logo" />}
       onBack={() => nav.back('/welcome')} onNext={next} nextDisabled={!valid} nextLoading={busy} nextLabel="Send code">
       <Input label="Email" required value={d.email} onChangeText={v => { set({ email: v }); setErr(null); }} valid={valid} placeholder="name@crew.agency"
         autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" textContentType="emailAddress" focusOnEnter
